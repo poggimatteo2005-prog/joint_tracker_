@@ -109,6 +109,14 @@ self.addEventListener('fetch', function (event) {
     return; // lascia che il browser gestisca la richiesta normalmente
   }
 
+  // Lo script di Vercel Speed Insights e le sue chiamate beacon (spesso POST, non
+  // cacheabili dalla Cache API) devono sempre andare in rete: altrimenti lo script
+  // resterebbe in cache fino al prossimo deploy invece di aggiornarsi, e i tentativi
+  // di cache.put() sulle POST del beacon genererebbero errori innocui ma rumorosi.
+  if (url.includes('/_vercel/speed-insights/')) {
+    return;
+  }
+
   // Per tutto il resto (app shell, librerie): cache-first, con aggiornamento in background
   event.respondWith(
     caches.match(event.request).then(function (cached) {
