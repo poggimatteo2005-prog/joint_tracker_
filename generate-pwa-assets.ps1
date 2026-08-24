@@ -38,9 +38,8 @@ function New-HQGraphics($bitmap) {
 # ---------- 1. Icone standard ("any", safe zone 80%, sfondo trasparente) ----------
 # Erano full-bleed (logo a contatto coi bordi): Android/Play Protect applicano comunque
 # una propria maschera adattiva anche alle icone "any" (non solo alle "maskable"), quindi
-# senza margine il fumo/banner venivano tagliati. Stesso margine delle maskable (80%),
-# ma sfondo trasparente invece che pieno, per restare corrette anche nei contesti che le
-# mostrano cosi' come sono (favicon, tab del browser).
+# senza margine il fumo/banner venivano tagliati. Sfondo trasparente (non pieno) nel
+# margine, cosi' il logo non ha un riquadro colorato intorno.
 function New-PlainIcon([int]$size, [string]$outPath) {
     $bmp = New-Object System.Drawing.Bitmap $size, $size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = New-HQGraphics $bmp
