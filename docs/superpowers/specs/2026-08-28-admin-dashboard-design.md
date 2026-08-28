@@ -74,8 +74,9 @@ Inspected against the live Supabase project `afkxmbxcavwhurmdelfr` on 2026-08-28
 | `supabase/migrations/<ts>_add_admin_dashboard_stats.sql` (new) | The RPC + grants. |
 | `CLAUDE.md` | Document `admin_dashboard_stats()` under the `SECURITY DEFINER` list and note `/admin` exists. |
 
-No changes to `app.js`, `app/index.html`, `style.css`, `sw.js`, or the service worker
-precache (the admin page is intentionally outside the PWA scope).
+No changes to `app.js`, `app/index.html`, `style.css`, `sw.js`, or the service
+worker precache. `/admin` is *within* the service-worker scope (see §7) but is
+deliberately left out of `PRECACHE_URLS` and gets no `sw.js` code changes.
 
 ### 4.2 The RPC — `public.admin_dashboard_stats()`
 
