@@ -32,10 +32,12 @@ PWA per il tracking di sessioni cannabis con funzionalità social (sessioni cond
   - `get_pending_friend_requests()` — legge `friendships` + `profiles.username` di chi ha mandato la richiesta (join cross-utente).
   - `profiles_public` (view, non funzione, ma stessa semantica: `security_invoker = false`) — espone solo `id, username, avatar_url` di TUTTI i profili per ricerca amici/classifica, bypassando la RLS di `profiles` che limita ognuno al proprio profilo. **Attenzione**: in produzione questa view è già stata trovata silenziosamente flippata a `security_invoker = on` (probabile modifica manuale in Supabase Studio mai tracciata in una migration) rompendo la ricerca amici senza errori visibili — se il comportamento sembra inconsistente rispetto alle migration, verifica sempre la definizione live via MCP Supabase (`pg_get_viewdef`, `reloptions`) prima di fidarti dei file in `supabase/migrations/`.
   - `insert_own_notification(p_type, p_message)` — `notifications` non ha una policy INSERT per utenti normali (le notifiche cross-utente passano già da funzioni SECURITY DEFINER dedicate, es. `send_friend_request`). Usata dal sistema tolerance break per le notifiche in-app di milestone CB1/check-in: inserisce sempre e solo con `user_id = auth.uid()`, quindi un utente può notificare solo se stesso.
+  - `admin_dashboard_stats()` — dashboard di amministrazione owner-only (`/admin`): aggrega `auth.users`, e `smokes`/`tolerance_breaks`/`profiles` di TUTTI gli utenti per crescita/utilizzo/adozione feature; la RLS normalmente limita ognuno alle proprie righe e `auth.users` non è raggiungibile dal client. Protetta da un controllo email hardcoded su `auth.jwt() ->> 'email'` (solo `poggi.matteo.2005@gmail.com`), `execute` concesso solo a `authenticated` e revocato da `anon`/`public`. Nessuna tabella nuova, quindi nessuna nuova RLS policy.
 - Mai esporre chiavi service_role lato client
 - Edge Functions: validare sempre l'input, mai fidarsi di dati dal client
 
 ## Aree sensibili (chiedere conferma prima di modificare)
+- Esiste una pagina admin privata a `/admin` (`admin.html`, standalone, `noindex`, non linkata da nessuna parte) — vedi `docs/superpowers/specs/2026-08-28-admin-dashboard-design.md`.
 - Service worker (cache invalidation puo rompere l'app per utenti esistenti)
 - Schema RLS policies
 - Logica guest mode / migrazione da guest ad account registrato
