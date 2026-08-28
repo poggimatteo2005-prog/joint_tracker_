@@ -40,7 +40,7 @@ h2{font-size:15px;color:var(--heading);margin:0 0 10px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid rgba(var(--overlay-rgb),.08)}
 th{font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.03em}
-td.num{text-align:right;font-variant-numeric:tabular-nums}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 svg.chart{width:100%;height:auto;display:block}
 .spinner{display:inline-block;width:24px;height:24px;border:3px solid rgba(var(--overlay-rgb),.15);border-radius:50%;border-top-color:var(--primary-light);animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -92,7 +92,7 @@ function renderError(message) {
 
 // Minimal inline-SVG bar chart. data: [{ day:'YYYY-MM-DD', count:int }]. No library.
 function renderBarChart(data, opts = {}) {
-	const w = 600, h = opts.height || 120, pad = 18;
+	const w = 360, h = opts.height || 120, pad = 18;
 	const max = Math.max(1, ...data.map(d => d.count));
 	const bw = (w - pad * 2) / data.length;
 	const bars = data.map((d, i) => {
@@ -105,11 +105,11 @@ function renderBarChart(data, opts = {}) {
 	const labels = data.map((d, i) => {
 		if (i % 5 !== 0) return '';
 		const x = pad + i * bw + bw / 2;
-		return `<text x="${x.toFixed(1)}" y="${h - 4}" font-size="9" text-anchor="middle" fill="var(--color-text-muted)">${d.day.slice(5)}</text>`;
+		return `<text x="${x.toFixed(1)}" y="${h - 4}" font-size="11" text-anchor="middle" fill="var(--color-text-muted)">${d.day.slice(5)}</text>`;
 	}).join('');
 	const baseline = `<line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="rgba(128,128,128,.35)" stroke-width="1"/>`;
-	const maxLabel = `<text x="${pad}" y="12" font-size="10" fill="var(--color-text-muted)">max ${max}</text>`;
-	return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img">${maxLabel}${bars}${baseline}${labels}</svg>`;
+	const maxLabel = `<text x="${pad}" y="12" font-size="11" fill="var(--color-text-muted)">max ${max}</text>`;
+	return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(opts.label || '')}">${maxLabel}${bars}${baseline}${labels}</svg>`;
 }
 
 function trendChip(cur, prev) {
@@ -127,12 +127,13 @@ function render(data) {
 
 	// --- Crescita ---
 	el('sec-growth').querySelector('.sec-body').innerHTML = `
+		<div style="font-size:11px;color:var(--color-text-muted);margin-bottom:10px">Dati aggiornati: ${new Date(data.generated_at).toLocaleString('it-IT')}</div>
 		<div class="grid">
 			<div class="stat"><div class="label">Utenti totali</div><div class="big">${g.total_users}</div><div class="sub">oggi +${g.new_users.today}</div></div>
 			<div class="stat"><div class="label">Nuovi 7gg</div><div class="big">${g.new_users.d7}</div><div class="sub">${trendChip(g.new_users.d7, g.new_users_prev.d7)} vs 7gg prec.</div></div>
 			<div class="stat"><div class="label">Nuovi 30gg</div><div class="big">${g.new_users.d30}</div><div class="sub">${trendChip(g.new_users.d30, g.new_users_prev.d30)} vs 30gg prec.</div></div>
 		</div>
-		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Iscrizioni / giorno (30gg)</div>${renderBarChart(g.signups_by_day)}</div>`;
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Iscrizioni / giorno (30gg)</div>${renderBarChart(g.signups_by_day, { label: 'Iscrizioni per giorno, ultimi 30 giorni' })}</div>`;
 
 	// --- Utilizzo ---
 	el('sec-usage').querySelector('.sec-body').innerHTML = `
@@ -142,7 +143,7 @@ function render(data) {
 			<div class="stat"><div class="label">DAU (24h)</div><div class="big">${u.dau}</div></div>
 			<div class="stat"><div class="label">MAU (30gg)</div><div class="big">${u.mau}</div><div class="sub">DAU/MAU ${u.dau_mau_pct}%</div></div>
 		</div>
-		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Sessioni / giorno (30gg) — ultimi 7gg: ${u.sessions_7}</div>${renderBarChart(u.sessions_by_day_30)}</div>`;
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Sessioni / giorno (30gg) — ultimi 7gg: ${u.sessions_7}</div>${renderBarChart(u.sessions_by_day_30, { label: 'Sessioni per giorno, ultimi 30 giorni' })}</div>`;
 
 	// --- Adozione feature ---
 	const sb = a.streak_buckets;

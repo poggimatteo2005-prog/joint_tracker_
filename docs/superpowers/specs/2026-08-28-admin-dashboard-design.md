@@ -154,6 +154,7 @@ precache (the admin page is intentionally outside the PWA scope).
 - **new_users trend**: UI shows ▲ if `d7 > new_users_prev.d7`, ▼ if lower, `–` if equal; same for d30.
 - **DAU / MAU**: activity = `smokes.created_at` (when the row was inserted), `not_mine IS NOT TRUE`, `COUNT(DISTINCT user_id)`. `dau_mau_pct = round(100 * dau / nullif(mau,0), 1)`.
 - **Streak per user**: distinct `smokes.date` per `user_id`; walk backwards from the latest date; if the latest date is older than yesterday → 0; else 1 + count of contiguous preceding days. Implemented as a set-based query (recursive CTE or `generate_series` gap check), not a per-user loop. Bucket by D5 edges.
+  Note: the dashboard's streak buckets exclude `not_mine` rows (per D4), whereas the in-app `calculateStreak()` (`app.js`) counts every `smokes` row. A user whose only activity on a given day was a shared session logged by someone else has that day count toward their in-app streak but not toward the dashboard bucket. This is intentional (D4: "everywhere").
 - **pct_shared_session**: `user_id` is counted if it owns ≥1 `smokes` row with `shared_with` a non-empty jsonb array, OR owns ≥1 row with `not_mine = true`. `round(100 * matching / total_users, 1)`.
 - **pct_tolerance_break**: distinct `user_id` in `tolerance_breaks` / `total_users`.
 - **recent_users.session_count**: `COUNT(*)` in `smokes` for that `user_id` with `not_mine IS NOT TRUE`.
@@ -232,8 +233,7 @@ x-axis `<text>` labels. Colours from CSS vars. No external library. Responsive
   `innerHTML` (copy the helper from `app.js`).
 - `robots.txt` `Disallow: /admin` + `<meta robots noindex,nofollow>`; page is not
   linked anywhere.
-- `/admin` is outside the service-worker scope (`/app`), so it is never precached
-  or served offline.
+- `/admin` is **within** the service-worker scope — `sw.js` registers at `/sw.js`, so its scope is `/`, not `/app`. It is **not** precached (`PRECACHE_URLS` unchanged), but `sw.js`'s cache-first-with-background-update handler serves it from cache after the first visit. `CACHE_NAME` is derived from the `app.js` content hash (`build.mjs`), so a deploy that changes **only** `admin.html` does not invalidate the cache: the owner sees the previous version for one load, then the background fetch refreshes it. After an admin-only hotfix, hard-reload. The displayed numbers are always fresh regardless — the RPC call bypasses the SW.
 
 ## 8. Work split & deployment
 

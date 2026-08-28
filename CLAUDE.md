@@ -37,7 +37,7 @@ PWA per il tracking di sessioni cannabis con funzionalità social (sessioni cond
 - Edge Functions: validare sempre l'input, mai fidarsi di dati dal client
 
 ## Aree sensibili (chiedere conferma prima di modificare)
-- Esiste una pagina admin privata a `/admin` (`admin.html`, standalone, `noindex`, non linkata da nessuna parte) — vedi `docs/superpowers/specs/2026-08-28-admin-dashboard-design.md`.
+- Esiste una pagina admin privata a `/admin` (`admin.html`, standalone, `noindex`, non linkata da nessuna parte) — vedi `docs/superpowers/specs/2026-08-28-admin-dashboard-design.md`. Nota: `/admin` è dentro lo scope del service worker (`/sw.js` → scope `/`) e servito cache-first; un deploy che tocca solo `admin.html` (non `app.js`) non bumpa `CACHE_NAME`, quindi l'owner vede la versione precedente per un load — hard-reload dopo un hotfix solo-admin.
 - Service worker (cache invalidation puo rompere l'app per utenti esistenti)
 - Schema RLS policies
 - Logica guest mode / migrazione da guest ad account registrato
