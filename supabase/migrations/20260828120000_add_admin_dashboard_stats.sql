@@ -17,7 +17,7 @@ begin
 		raise exception 'not authorized' using errcode = '42501';
 	end if;
 
-	select count(*) into v_total_users from auth.users;
+	select count(*) into v_total_users from auth.users where deleted_at is null;
 
 	with
 	user_days as (
@@ -47,6 +47,7 @@ begin
 		            then 0 else cr.run_len end as streak
 		from auth.users u
 		left join current_run cr on cr.user_id = u.id
+		where u.deleted_at is null
 	),
 	streak_buckets as (
 		select
@@ -62,7 +63,7 @@ begin
 	signups_g as (
 		select created_at::date as day, count(*) as c
 		from auth.users
-		where created_at >= current_date - 29
+		where created_at >= current_date - 29 and deleted_at is null
 		group by 1
 	),
 	signups_by_day as (
@@ -108,6 +109,7 @@ begin
 		        where s.user_id = u.id and s.not_mine is not true) as session_count
 		from auth.users u
 		left join public.profiles p on p.id = u.id
+		where u.deleted_at is null
 		order by u.created_at desc
 		limit 20
 	),
@@ -126,17 +128,19 @@ begin
 		'growth', jsonb_build_object(
 			'total_users', v_total_users,
 			'new_users', jsonb_build_object(
-				'today', (select count(*) from auth.users where created_at::date = current_date),
-				'd7',    (select count(*) from auth.users where created_at >= now() - interval '7 days'),
-				'd30',   (select count(*) from auth.users where created_at >= now() - interval '30 days')
+				'today', (select count(*) from auth.users where created_at::date = current_date and deleted_at is null),
+				'd7',    (select count(*) from auth.users where created_at >= now() - interval '7 days' and deleted_at is null),
+				'd30',   (select count(*) from auth.users where created_at >= now() - interval '30 days' and deleted_at is null)
 			),
 			'new_users_prev', jsonb_build_object(
 				'd7',  (select count(*) from auth.users
 				        where created_at >= now() - interval '14 days'
-				          and created_at <  now() - interval '7 days'),
+				          and created_at <  now() - interval '7 days'
+				          and deleted_at is null),
 				'd30', (select count(*) from auth.users
 				        where created_at >= now() - interval '60 days'
-				          and created_at <  now() - interval '30 days')
+				          and created_at <  now() - interval '30 days'
+				          and deleted_at is null)
 			),
 			'signups_by_day', coalesce((select arr from signups_by_day), '[]'::jsonb)
 		),
@@ -145,23 +149,23 @@ begin
 			'sessions_7', (select count(*) from public.smokes
 			               where not_mine is not true and date >= current_date - 6),
 			'sessions_by_day_30', coalesce((select arr from sessions_by_day), '[]'::jsonb),
-			'avg_sessions_per_user', round(
+			'avg_sessions_per_user', coalesce(round(
 				(select count(*) from public.smokes where not_mine is not true)::numeric
-				/ nullif(v_total_users, 0), 1),
+				/ nullif(v_total_users, 0), 1), 0),
 			'dau', (select count(distinct user_id) from public.smokes
 			        where not_mine is not true and created_at >= now() - interval '24 hours'),
 			'mau', (select count(distinct user_id) from public.smokes
 			        where not_mine is not true and created_at >= now() - interval '30 days'),
-			'dau_mau_pct', round(
+			'dau_mau_pct', coalesce(round(
 				100.0 * (select count(distinct user_id) from public.smokes
 				         where not_mine is not true and created_at >= now() - interval '24 hours')
 				/ nullif((select count(distinct user_id) from public.smokes
-				          where not_mine is not true and created_at >= now() - interval '30 days'), 0), 1)
+				          where not_mine is not true and created_at >= now() - interval '30 days'), 0), 1), 0)
 		),
 		'adoption', jsonb_build_object(
-			'pct_shared_session', round(100.0 * (select count(*) from shared_users) / nullif(v_total_users, 0), 1),
-			'pct_tolerance_break', round(100.0 * (select count(*) from break_users) / nullif(v_total_users, 0), 1),
-			'pct_in_leaderboard', round(100.0 * (select count(*) from leaderboard_users) / nullif(v_total_users, 0), 1),
+			'pct_shared_session', coalesce(round(100.0 * (select count(*) from shared_users) / nullif(v_total_users, 0), 1), 0),
+			'pct_tolerance_break', coalesce(round(100.0 * (select count(*) from break_users) / nullif(v_total_users, 0), 1), 0),
+			'pct_in_leaderboard', coalesce(round(100.0 * (select count(*) from leaderboard_users) / nullif(v_total_users, 0), 1), 0),
 			'streak_buckets', (select jsonb_build_object(
 				'zero', zero, 'd1_7', d1_7, 'd8_30', d8_30, 'd31_plus', d31_plus) from streak_buckets)
 		),
