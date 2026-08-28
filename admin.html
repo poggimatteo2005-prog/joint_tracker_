@@ -90,7 +90,89 @@ function renderError(message) {
 	showState('error');
 }
 
-function render(data) { /* implemented in Task 3 */ }
+// Minimal inline-SVG bar chart. data: [{ day:'YYYY-MM-DD', count:int }]. No library.
+function renderBarChart(data, opts = {}) {
+	const w = 600, h = opts.height || 120, pad = 18;
+	const max = Math.max(1, ...data.map(d => d.count));
+	const bw = (w - pad * 2) / data.length;
+	const bars = data.map((d, i) => {
+		const bh = Math.round((h - pad * 2) * (d.count / max));
+		const x = pad + i * bw;
+		const y = h - pad - bh;
+		return `<rect x="${(x + 1).toFixed(1)}" y="${y}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${bh}" rx="1" fill="var(--primary-light)"><title>${escapeHtml(d.day)}: ${d.count}</title></rect>`;
+	}).join('');
+	// x labels: every ~5th day
+	const labels = data.map((d, i) => {
+		if (i % 5 !== 0) return '';
+		const x = pad + i * bw + bw / 2;
+		return `<text x="${x.toFixed(1)}" y="${h - 4}" font-size="9" text-anchor="middle" fill="var(--color-text-muted)">${d.day.slice(5)}</text>`;
+	}).join('');
+	const baseline = `<line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="rgba(128,128,128,.35)" stroke-width="1"/>`;
+	const maxLabel = `<text x="${pad}" y="12" font-size="10" fill="var(--color-text-muted)">max ${max}</text>`;
+	return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img">${maxLabel}${bars}${baseline}${labels}</svg>`;
+}
+
+function trendChip(cur, prev) {
+	if (cur > prev) return `<span class="trend-up">▲ ${cur - prev}</span>`;
+	if (cur < prev) return `<span class="trend-down">▼ ${prev - cur}</span>`;
+	return `<span class="trend-flat">–</span>`;
+}
+
+function pctRow(label, value) {
+	return `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="big">${value}%</div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, value)}%"></div></div></div>`;
+}
+
+function render(data) {
+	const g = data.growth, u = data.usage, a = data.adoption;
+
+	// --- Crescita ---
+	el('sec-growth').querySelector('.sec-body').innerHTML = `
+		<div class="grid">
+			<div class="stat"><div class="label">Utenti totali</div><div class="big">${g.total_users}</div><div class="sub">oggi +${g.new_users.today}</div></div>
+			<div class="stat"><div class="label">Nuovi 7gg</div><div class="big">${g.new_users.d7}</div><div class="sub">${trendChip(g.new_users.d7, g.new_users_prev.d7)} vs 7gg prec.</div></div>
+			<div class="stat"><div class="label">Nuovi 30gg</div><div class="big">${g.new_users.d30}</div><div class="sub">${trendChip(g.new_users.d30, g.new_users_prev.d30)} vs 30gg prec.</div></div>
+		</div>
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Iscrizioni / giorno (30gg)</div>${renderBarChart(g.signups_by_day)}</div>`;
+
+	// --- Utilizzo ---
+	el('sec-usage').querySelector('.sec-body').innerHTML = `
+		<div class="grid">
+			<div class="stat"><div class="label">Sessioni totali</div><div class="big">${u.total_sessions}</div></div>
+			<div class="stat"><div class="label">Media / utente</div><div class="big">${u.avg_sessions_per_user}</div></div>
+			<div class="stat"><div class="label">DAU (24h)</div><div class="big">${u.dau}</div></div>
+			<div class="stat"><div class="label">MAU (30gg)</div><div class="big">${u.mau}</div><div class="sub">DAU/MAU ${u.dau_mau_pct}%</div></div>
+		</div>
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Sessioni / giorno (30gg) — ultimi 7gg: ${u.sessions_7}</div>${renderBarChart(u.sessions_by_day_30)}</div>`;
+
+	// --- Adozione feature ---
+	const sb = a.streak_buckets;
+	const maxBucket = Math.max(1, sb.zero, sb.d1_7, sb.d8_30, sb.d31_plus);
+	const bucketRow = (label, n) => `<div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+		<span style="width:56px;font-size:12px;color:var(--color-text-secondary)">${label}</span>
+		<div class="bar-track" style="flex:1;margin-top:0"><div class="bar-fill" style="width:${(n / maxBucket) * 100}%"></div></div>
+		<span style="width:24px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums">${n}</span></div>`;
+	el('sec-adoption').querySelector('.sec-body').innerHTML = `
+		<div class="grid">
+			${pctRow('Shared session', a.pct_shared_session)}
+			${pctRow('Tolerance break', a.pct_tolerance_break)}
+			${pctRow('In classifica', a.pct_in_leaderboard)}
+		</div>
+		<div style="margin-top:14px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Distribuzione streak</div>
+			${bucketRow('0 gg', sb.zero)}
+			${bucketRow('1–7 gg', sb.d1_7)}
+			${bucketRow('8–30 gg', sb.d8_30)}
+			${bucketRow('31+ gg', sb.d31_plus)}
+		</div>`;
+
+	// --- Ultimi 20 iscritti ---
+	const rows = data.recent_users.map(r => `<tr>
+		<td>${escapeHtml((r.created_at || '').slice(0, 10))}</td>
+		<td>${r.username ? escapeHtml(r.username) : '—'}</td>
+		<td class="num">${r.session_count}</td></tr>`).join('');
+	el('sec-recent').querySelector('.sec-body').innerHTML = `
+		<table><thead><tr><th>Registrato</th><th>Username</th><th class="num">Sessioni</th></tr></thead>
+		<tbody>${rows || '<tr><td colspan="3" style="color:var(--color-text-muted)">Nessun utente</td></tr>'}</tbody></table>`;
+}
 
 let supabaseClient;
 
@@ -109,8 +191,12 @@ async function loadDashboard() {
 async function init() {
 	// supabase-js is loaded with `defer`; wait for it if needed.
 	if (!window.supabase) {
-		await new Promise(res => {
-			const t = setInterval(() => { if (window.supabase) { clearInterval(t); res(); } }, 20);
+		await new Promise((res, rej) => {
+			let waited = 0;
+			const t = setInterval(() => {
+				if (window.supabase) { clearInterval(t); res(); }
+				else if ((waited += 20) > 10000) { clearInterval(t); rej(new Error('Supabase JS non caricato')); }
+			}, 20);
 		});
 	}
 	supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -125,7 +211,7 @@ async function init() {
 	await loadDashboard();
 }
 
-init();
+init().catch(e => renderError(e.message));
 </script>
 </body>
 </html>
