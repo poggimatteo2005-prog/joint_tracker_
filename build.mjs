@@ -24,7 +24,8 @@ const STATIC_ENTRIES = [
 	'locales', 'splash',
 	// Pagine marketing/SEO statiche: nessun riferimento ad app.js/style.css/i18n.js,
 	// quindi non passano dalla riscrittura hash qui sotto (a differenza di app/index.html).
-	'index.html', 'come-funziona.html', 'faq.html', 'blog', 'marketing.css', 'og-image.png'
+	'index.html', 'come-funziona.html', 'faq.html', 'blog', 'marketing.css', 'og-image.png',
+	'admin.html'
 ];
 
 for (const entry of STATIC_ENTRIES) {

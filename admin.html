@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>JointTracker — Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<script>
+(function () {
+	try {
+		var pref = localStorage.getItem('jt_theme') || 'dark';
+		var resolved = pref === 'auto'
+			? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+			: pref;
+		document.documentElement.setAttribute('data-theme', resolved);
+	} catch (e) {
+		document.documentElement.setAttribute('data-theme', 'dark');
+	}
+})();
+</script>
+<style>
+:root{--primary:#2e7d32;--primary-light:#4caf50;--primary-dark:#1b5e20;--heading:#1b5e20;--danger:#ff3b30;--bg:#f4f7f6;--surface-rgb:255,255,255;--overlay-rgb:0,0,0;--color-text:#1c1c1e;--color-text-secondary:#666;--color-text-muted:#6b6b6b}
+:root[data-theme="dark"]{--primary-light:#57c15c;--heading:#6fcf72;--bg:#0c120c;--surface-rgb:24,32,24;--overlay-rgb:255,255,255;--color-text:#eef2ee;--color-text-secondary:#b7c3b7;--color-text-muted:#8a978a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--color-text);background:var(--bg);overflow-x:hidden}
+.wrap{max-width:640px;margin:0 auto}
+h1{font-size:20px;margin:0 0 16px}
+h2{font-size:15px;color:var(--heading);margin:0 0 10px}
+.card{background:rgba(var(--surface-rgb),.97);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.stat{background:rgba(var(--overlay-rgb),.04);border-radius:12px;padding:12px}
+.stat .label{font-size:11px;color:var(--color-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.stat .big{font-size:30px;font-weight:700;line-height:1.1;margin-top:4px}
+.stat .sub{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.trend-up{color:var(--primary-light)}
+.trend-down{color:var(--danger)}
+.trend-flat{color:var(--color-text-muted)}
+.bar-track{background:rgba(var(--overlay-rgb),.08);border-radius:6px;height:8px;overflow:hidden;margin-top:8px}
+.bar-fill{height:100%;background:var(--primary-light);border-radius:6px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid rgba(var(--overlay-rgb),.08)}
+th{font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.03em}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+svg.chart{width:100%;height:auto;display:block}
+.spinner{display:inline-block;width:24px;height:24px;border:3px solid rgba(var(--overlay-rgb),.15);border-radius:50%;border-top-color:var(--primary-light);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.center{text-align:center;padding:48px 0;color:var(--color-text-muted)}
+.errbox{border:1px solid var(--danger);border-radius:12px;padding:16px;color:var(--danger)}
+button.retry{margin-top:12px;background:var(--primary-dark);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
+[hidden]{display:none !important}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+</head>
+<body>
+<div class="wrap">
+	<div id="state-loading" class="center"><div class="spinner"></div><div style="margin-top:12px">Caricamento…</div></div>
+	<div id="state-error" hidden><div class="errbox"><strong>Errore nel caricamento</strong><div id="state-error-msg" style="margin-top:6px;font-size:13px"></div><button class="retry" id="retryBtn">Riprova</button></div></div>
+
+	<main id="dashboard" hidden>
+		<h1>📊 JointTracker Admin</h1>
+		<section id="sec-growth" class="card"><h2>Crescita</h2><div class="sec-body"></div></section>
+		<section id="sec-usage" class="card"><h2>Utilizzo</h2><div class="sec-body"></div></section>
+		<section id="sec-adoption" class="card"><h2>Adozione feature</h2><div class="sec-body"></div></section>
+		<section id="sec-recent" class="card"><h2>Ultimi 20 iscritti</h2><div class="sec-body"></div></section>
+	</main>
+</div>
+
+<script type="module">
+const SUPABASE_URL = 'https://afkxmbxcavwhurmdelfr.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_1rc0ueZL6Y03qhk5jp_34w_ObCOCpCP';
+const ADMIN_EMAIL = 'poggi.matteo.2005@gmail.com';
+
+function el(id) { return document.getElementById(id); }
+
+function escapeHtml(str) {
+	if (str === null || str === undefined) return '';
+	return String(str)
+		.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function showState(name) {
+	el('state-loading').hidden = name !== 'loading';
+	el('state-error').hidden = name !== 'error';
+	el('dashboard').hidden = name !== 'ready';
+}
+
+function renderError(message) {
+	el('state-error-msg').textContent = message || 'Errore sconosciuto';
+	showState('error');
+}
+
+// Minimal inline-SVG bar chart. data: [{ day:'YYYY-MM-DD', count:int }]. No library.
+function renderBarChart(data, opts = {}) {
+	const w = 360, h = opts.height || 120, pad = 18;
+	const max = Math.max(1, ...data.map(d => d.count));
+	const bw = (w - pad * 2) / data.length;
+	const bars = data.map((d, i) => {
+		const bh = Math.round((h - pad * 2) * (d.count / max));
+		const x = pad + i * bw;
+		const y = h - pad - bh;
+		return `<rect x="${(x + 1).toFixed(1)}" y="${y}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${bh}" rx="1" fill="var(--primary-light)"><title>${escapeHtml(d.day)}: ${d.count}</title></rect>`;
+	}).join('');
+	// x labels: every ~5th day
+	const labels = data.map((d, i) => {
+		if (i % 5 !== 0) return '';
+		const x = pad + i * bw + bw / 2;
+		return `<text x="${x.toFixed(1)}" y="${h - 4}" font-size="11" text-anchor="middle" fill="var(--color-text-muted)">${d.day.slice(5)}</text>`;
+	}).join('');
+	const baseline = `<line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="rgba(128,128,128,.35)" stroke-width="1"/>`;
+	const maxLabel = `<text x="${pad}" y="12" font-size="11" fill="var(--color-text-muted)">max ${max}</text>`;
+	return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(opts.label || '')}">${maxLabel}${bars}${baseline}${labels}</svg>`;
+}
+
+function trendChip(cur, prev) {
+	if (cur > prev) return `<span class="trend-up">▲ ${cur - prev}</span>`;
+	if (cur < prev) return `<span class="trend-down">▼ ${prev - cur}</span>`;
+	return `<span class="trend-flat">–</span>`;
+}
+
+function pctRow(label, value) {
+	return `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="big">${value}%</div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, value)}%"></div></div></div>`;
+}
+
+function render(data) {
+	const g = data.growth, u = data.usage, a = data.adoption;
+
+	// --- Crescita ---
+	el('sec-growth').querySelector('.sec-body').innerHTML = `
+		<div style="font-size:11px;color:var(--color-text-muted);margin-bottom:10px">Dati aggiornati: ${new Date(data.generated_at).toLocaleString('it-IT')}</div>
+		<div class="grid">
+			<div class="stat"><div class="label">Utenti totali</div><div class="big">${g.total_users}</div><div class="sub">oggi +${g.new_users.today}</div></div>
+			<div class="stat"><div class="label">Nuovi 7gg</div><div class="big">${g.new_users.d7}</div><div class="sub">${trendChip(g.new_users.d7, g.new_users_prev.d7)} vs 7gg prec.</div></div>
+			<div class="stat"><div class="label">Nuovi 30gg</div><div class="big">${g.new_users.d30}</div><div class="sub">${trendChip(g.new_users.d30, g.new_users_prev.d30)} vs 30gg prec.</div></div>
+		</div>
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Iscrizioni / giorno (30gg)</div>${renderBarChart(g.signups_by_day, { label: 'Iscrizioni per giorno, ultimi 30 giorni' })}</div>`;
+
+	// --- Utilizzo ---
+	el('sec-usage').querySelector('.sec-body').innerHTML = `
+		<div class="grid">
+			<div class="stat"><div class="label">Sessioni totali</div><div class="big">${u.total_sessions}</div></div>
+			<div class="stat"><div class="label">Media / utente</div><div class="big">${u.avg_sessions_per_user}</div></div>
+			<div class="stat"><div class="label">DAU (24h)</div><div class="big">${u.dau}</div></div>
+			<div class="stat"><div class="label">MAU (30gg)</div><div class="big">${u.mau}</div><div class="sub">DAU/MAU ${u.dau_mau_pct}%</div></div>
+		</div>
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Sessioni / giorno (30gg) — ultimi 7gg: ${u.sessions_7}</div>${renderBarChart(u.sessions_by_day_30, { label: 'Sessioni per giorno, ultimi 30 giorni' })}</div>`;
+
+	// --- Adozione feature ---
+	const sb = a.streak_buckets;
+	const maxBucket = Math.max(1, sb.zero, sb.d1_7, sb.d8_30, sb.d31_plus);
+	const bucketRow = (label, n) => `<div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+		<span style="width:56px;font-size:12px;color:var(--color-text-secondary)">${label}</span>
+		<div class="bar-track" style="flex:1;margin-top:0"><div class="bar-fill" style="width:${(n / maxBucket) * 100}%"></div></div>
+		<span style="width:24px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums">${n}</span></div>`;
+	el('sec-adoption').querySelector('.sec-body').innerHTML = `
+		<div class="grid">
+			${pctRow('Shared session', a.pct_shared_session)}
+			${pctRow('Tolerance break', a.pct_tolerance_break)}
+			${pctRow('In classifica', a.pct_in_leaderboard)}
+		</div>
+		<div style="margin-top:14px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Distribuzione streak</div>
+			${bucketRow('0 gg', sb.zero)}
+			${bucketRow('1–7 gg', sb.d1_7)}
+			${bucketRow('8–30 gg', sb.d8_30)}
+			${bucketRow('31+ gg', sb.d31_plus)}
+		</div>`;
+
+	// --- Ultimi 20 iscritti ---
+	const rows = data.recent_users.map(r => `<tr>
+		<td>${escapeHtml((r.created_at || '').slice(0, 10))}</td>
+		<td>${r.username ? escapeHtml(r.username) : '—'}</td>
+		<td class="num">${r.session_count}</td></tr>`).join('');
+	el('sec-recent').querySelector('.sec-body').innerHTML = `
+		<table><thead><tr><th>Registrato</th><th>Username</th><th class="num">Sessioni</th></tr></thead>
+		<tbody>${rows || '<tr><td colspan="3" style="color:var(--color-text-muted)">Nessun utente</td></tr>'}</tbody></table>`;
+}
+
+let supabaseClient;
+
+async function loadDashboard() {
+	showState('loading');
+	try {
+		const { data, error } = await supabaseClient.rpc('admin_dashboard_stats');
+		if (error) throw new Error(error.message || 'RPC fallita');
+		render(data);
+		showState('ready');
+	} catch (err) {
+		renderError(err.message);
+	}
+}
+
+async function init() {
+	// supabase-js is loaded with `defer`; wait for it if needed.
+	if (!window.supabase) {
+		await new Promise((res, rej) => {
+			let waited = 0;
+			const t = setInterval(() => {
+				if (window.supabase) { clearInterval(t); res(); }
+				else if ((waited += 20) > 10000) { clearInterval(t); rej(new Error('Supabase JS non caricato')); }
+			}, 20);
+		});
+	}
+	supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+	const { data: { session } } = await supabaseClient.auth.getSession();
+	if (!session || session.user.email !== ADMIN_EMAIL) {
+		window.location.replace('/');
+		return;
+	}
+
+	el('retryBtn').addEventListener('click', loadDashboard);
+	await loadDashboard();
+}
+
+init().catch(e => renderError(e.message));
+</script>
+</body>
+</html>
