@@ -1,8 +1,16 @@
 # JointTracker — Feed Istantanee (feed + reazioni + commenti + notifiche) — Design
 
 **Date:** 2026-08-29
-**Status:** Approved for planning
+**Status:** Implemented 2026-08-30 (branch `feat/feed-istantanee`, Parte 1). Piano: `docs/superpowers/plans/2026-08-29-feed-istantanee.md`.
 **Author:** Matteo + Claude
+
+## Scostamenti in implementazione
+
+- **D13 (testo notifiche)**: usato l'helper `tn()` (plurale `_one`/`_other`) invece di `t(key, {count})` piatto — evita "1 commenti"/"1 reazioni" in italiano.
+- **§4.3**: `notifications.message` reso `NULL`able (le righe aggregate non hanno testo statico) — non previsto nello spec originale, necessario per l'insert di `notify_snapshot_engagement`.
+- **§4.5**: la view `snapshot_engagement` è `security_invoker = true` (non security-definer) — nessun consumatore client, e così non aggiunge un ERROR al linter Supabase.
+- **§6.2 markup reazioni**: il caret della palette è un `<button>` fratello di `.feed-react-btn` dentro `.feed-react`, non uno span annidato (HTML valido).
+- Verifica autenticata end-to-end (UI reazioni/commenti/notifiche realtime) delegata a Matteo post-deploy — l'ambiente SDD non può fare login. Le RPC e la visibilità sono verificate via SQL simulando i ruoli.
 
 ## 1. Goal
 
