@@ -39,15 +39,46 @@ h2{font-size:15px;color:var(--heading);margin:0 0 10px}
 .bar-fill{height:100%;background:var(--primary-light);border-radius:6px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid rgba(var(--overlay-rgb),.08)}
-th{font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.03em}
+th{font-size:11px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
 th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 svg.chart{width:100%;height:auto;display:block}
+svg.chart .hit{cursor:pointer}
 .spinner{display:inline-block;width:24px;height:24px;border:3px solid rgba(var(--overlay-rgb),.15);border-radius:50%;border-top-color:var(--primary-light);animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .center{text-align:center;padding:48px 0;color:var(--color-text-muted)}
 .errbox{border:1px solid var(--danger);border-radius:12px;padding:16px;color:var(--danger)}
 button.retry{margin-top:12px;background:var(--primary-dark);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
 [hidden]{display:none !important}
+
+/* --- chart / bar tooltip --- */
+.chart-tip{position:fixed;z-index:99999;pointer-events:none;background:var(--primary-dark);color:#fff;font-size:12px;line-height:1.35;padding:6px 9px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.4);max-width:220px}
+.chart-tip b{color:#fff;font-weight:700}
+[data-tip]{cursor:default}
+
+/* --- ultime 20 sessioni --- */
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}
+table.wide{min-width:100%;white-space:nowrap}
+td.clip{max-width:170px;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+td.clip.open{max-width:none;white-space:normal;word-break:break-word}
+td.clip.open::after{content:' ▲';color:var(--color-text-muted);font-size:10px}
+
+/* --- mappa sessioni --- */
+.mode-toggle{display:inline-flex;border:1px solid rgba(var(--overlay-rgb),.15);border-radius:10px;overflow:hidden;margin-bottom:10px}
+.mode-toggle button{background:transparent;color:var(--color-text-secondary);border:none;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer}
+.mode-toggle button.active{background:var(--primary);color:#fff}
+.filters{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+.chip{background:rgba(var(--overlay-rgb),.06);color:var(--color-text-secondary);border:none;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.chip.active{background:var(--primary-light);color:#08210a}
+.filters input[type=date],.filters select{background:rgba(var(--overlay-rgb),.04);color:var(--color-text);border:1px solid rgba(var(--overlay-rgb),.15);border-radius:8px;padding:6px 8px;font-size:12px;max-width:150px}
+.filters .fld{display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--color-text-muted)}
+#sessionMap{height:340px;border-radius:12px;overflow:hidden;background:rgba(var(--overlay-rgb),.05)}
+.map-meta{font-size:12px;color:var(--color-text-muted);margin-top:8px}
+.leaflet-container{background:rgba(var(--overlay-rgb),.06);font:inherit}
+/* dark mode: OSM tiles come light — darken them with a filter (same tile source as the user-side map) */
+:root[data-theme="dark"] .leaflet-tile{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9)}
+:root[data-theme="dark"] .leaflet-control-zoom a{background:#182018;color:#eef2ee;border-color:rgba(255,255,255,.15)}
+.leaflet-popup-content{font-size:12px;line-height:1.4}
+.sess-badge{background:var(--primary);color:#fff;border:2px solid #fff;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.35);white-space:nowrap;text-align:center}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 </head>
@@ -61,7 +92,9 @@ button.retry{margin-top:12px;background:var(--primary-dark);color:#fff;border:no
 		<section id="sec-growth" class="card"><h2>Crescita</h2><div class="sec-body"></div></section>
 		<section id="sec-usage" class="card"><h2>Utilizzo</h2><div class="sec-body"></div></section>
 		<section id="sec-adoption" class="card"><h2>Adozione feature</h2><div class="sec-body"></div></section>
+		<section id="sec-map" class="card"><h2>Mappa sessioni</h2><div class="sec-body"></div></section>
 		<section id="sec-recent" class="card"><h2>Ultimi 20 iscritti</h2><div class="sec-body"></div></section>
+		<section id="sec-sessions" class="card"><h2>Ultime 20 sessioni</h2><div class="sec-body"></div></section>
 	</main>
 </div>
 
@@ -90,18 +123,72 @@ function renderError(message) {
 	showState('error');
 }
 
+/* ========== TOOLTIP CONDIVISO (grafici + barre) ========== */
+// Un solo elemento tooltip, riusato da ogni grafico/barra. Attivato via attributo
+// data-tip="<html>" su rect SVG o div barra. mouseenter/mousemove per desktop,
+// touchstart per mobile (dove non c'è hover).
+let _tipEl = null;
+function tipEl() {
+	if (!_tipEl) {
+		_tipEl = document.createElement('div');
+		_tipEl.className = 'chart-tip';
+		_tipEl.hidden = true;
+		document.body.appendChild(_tipEl);
+	}
+	return _tipEl;
+}
+function showTip(evt, html) {
+	if (!html) return;
+	const t = tipEl();
+	t.innerHTML = html;
+	t.hidden = false;
+	const p = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+	const r = t.getBoundingClientRect();
+	let x = p.clientX + 12, y = p.clientY + 12;
+	if (x + r.width > window.innerWidth - 8) x = p.clientX - r.width - 12;
+	if (y + r.height > window.innerHeight - 8) y = p.clientY - r.height - 12;
+	t.style.left = Math.max(4, x) + 'px';
+	t.style.top = Math.max(4, y) + 'px';
+}
+function hideTip() { if (_tipEl) _tipEl.hidden = true; }
+document.addEventListener('touchstart', (e) => {
+	if (_tipEl && !_tipEl.hidden && !(e.target.closest && e.target.closest('[data-tip]'))) hideTip();
+}, { passive: true });
+window.addEventListener('scroll', hideTip, { passive: true });
+
+// Collega gli handler del tooltip a ogni elemento [data-tip] dentro `root`.
+function wireTips(root) {
+	root.querySelectorAll('[data-tip]').forEach((node) => {
+		node.addEventListener('mouseenter', (e) => showTip(e, node.getAttribute('data-tip')));
+		node.addEventListener('mousemove', (e) => showTip(e, node.getAttribute('data-tip')));
+		node.addEventListener('mouseleave', hideTip);
+		node.addEventListener('touchstart', (e) => {
+			e.preventDefault();
+			showTip(e, node.getAttribute('data-tip'));
+		}, { passive: false });
+	});
+}
+
+function dmLabel(day) { return day.slice(8, 10) + '/' + day.slice(5, 7); }
+
 // Minimal inline-SVG bar chart. data: [{ day:'YYYY-MM-DD', count:int }]. No library.
 function renderBarChart(data, opts = {}) {
 	const w = 360, h = opts.height || 120, pad = 18;
+	const noun = opts.noun || '';
 	const max = Math.max(1, ...data.map(d => d.count));
 	const bw = (w - pad * 2) / data.length;
 	const bars = data.map((d, i) => {
 		const bh = Math.round((h - pad * 2) * (d.count / max));
 		const x = pad + i * bw;
 		const y = h - pad - bh;
-		return `<rect x="${(x + 1).toFixed(1)}" y="${y}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${bh}" rx="1" fill="var(--primary-light)"><title>${escapeHtml(d.day)}: ${d.count}</title></rect>`;
+		return `<rect x="${(x + 1).toFixed(1)}" y="${y}" width="${Math.max(1, bw - 2).toFixed(1)}" height="${bh}" rx="1" fill="var(--primary-light)"/>`;
 	}).join('');
-	// x labels: every ~5th day
+	// hit areas full-height per column, carry the tooltip
+	const hits = data.map((d, i) => {
+		const x = pad + i * bw;
+		const tip = `<b>${escapeHtml(dmLabel(d.day))}</b><br>${d.count}${noun ? ' ' + escapeHtml(noun) : ''}`;
+		return `<rect class="hit" x="${x.toFixed(1)}" y="${pad}" width="${bw.toFixed(1)}" height="${(h - pad * 2).toFixed(1)}" fill="transparent" data-tip="${escapeHtml(tip)}"/>`;
+	}).join('');
 	const labels = data.map((d, i) => {
 		if (i % 5 !== 0) return '';
 		const x = pad + i * bw + bw / 2;
@@ -109,7 +196,7 @@ function renderBarChart(data, opts = {}) {
 	}).join('');
 	const baseline = `<line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="rgba(128,128,128,.35)" stroke-width="1"/>`;
 	const maxLabel = `<text x="${pad}" y="12" font-size="11" fill="var(--color-text-muted)">max ${max}</text>`;
-	return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(opts.label || '')}">${maxLabel}${bars}${baseline}${labels}</svg>`;
+	return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(opts.label || '')}">${maxLabel}${bars}${baseline}${labels}${hits}</svg>`;
 }
 
 function trendChip(cur, prev) {
@@ -119,9 +206,275 @@ function trendChip(cur, prev) {
 }
 
 function pctRow(label, value) {
-	return `<div class="stat"><div class="label">${escapeHtml(label)}</div><div class="big">${value}%</div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, value)}%"></div></div></div>`;
+	const tip = `<b>${escapeHtml(label)}</b><br>${value}% degli utenti`;
+	return `<div class="stat" data-tip="${escapeHtml(tip)}"><div class="label">${escapeHtml(label)}</div><div class="big">${value}%</div><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, value)}%"></div></div></div>`;
 }
 
+/* ========== ULTIME 20 SESSIONI ========== */
+const SESSION_COL_ORDER = [
+	'id', 'logged_at', 'username', 'email', 'user_id', 'type', 'grams',
+	'fumo_grams', 'erba_grams', 'my_fumo_grams', 'my_erba_grams', 'not_mine',
+	'date', 'time', 'ts', 'created_at', 'location_name', 'latitude', 'longitude',
+	'context_tag', 'mood_rating', 'shared_with', 'photo_path'
+];
+const SESSION_COL_LABEL = {
+	logged_at: 'Data/ora loggata', username: 'Utente', email: 'Email',
+	user_id: 'User ID', type: 'Tipo', grams: 'Grammi', fumo_grams: 'Fumo g',
+	erba_grams: 'Erba g', my_fumo_grams: 'Mio fumo g', my_erba_grams: 'Mia erba g',
+	not_mine: 'Not mine', created_at: 'Inserito il', location_name: 'Luogo',
+	latitude: 'Lat', longitude: 'Lng', context_tag: 'Contesto', mood_rating: 'Mood',
+	shared_with: 'Condivisa con', photo_path: 'Foto'
+};
+
+function cellText(v) {
+	if (v === null || v === undefined) return '—';
+	if (typeof v === 'object') return JSON.stringify(v);
+	return String(v);
+}
+
+function renderRecentSessions(rows) {
+	const body = el('sec-sessions').querySelector('.sec-body');
+	if (!rows || !rows.length) {
+		body.innerHTML = '<div style="color:var(--color-text-muted);font-size:13px">Nessuna sessione</div>';
+		return;
+	}
+	// column set = ordered known cols present + any extra key that shows up
+	const present = new Set();
+	rows.forEach(r => Object.keys(r).forEach(k => present.add(k)));
+	const cols = SESSION_COL_ORDER.filter(c => present.has(c));
+	[...present].forEach(k => { if (!cols.includes(k)) cols.push(k); });
+
+	const thead = '<tr>' + cols.map(c =>
+		`<th>${escapeHtml(SESSION_COL_LABEL[c] || c)}</th>`).join('') + '</tr>';
+
+	const trs = rows.map(r => '<tr>' + cols.map(c => {
+		const raw = cellText(c in r ? r[c] : null);
+		const isLong = raw.length > 24;
+		const cls = isLong ? 'clip' : '';
+		const title = isLong ? ` title="${escapeHtml(raw)}"` : '';
+		return `<td class="${cls}"${title}>${escapeHtml(raw)}</td>`;
+	}).join('') + '</tr>').join('');
+
+	body.innerHTML =
+		`<div style="font-size:11px;color:var(--color-text-muted);margin-bottom:8px">` +
+		`Ordinate per data/ora loggata (campo <code>date</code> + <code>time</code>), non per <code>created_at</code>. ` +
+		`Testi lunghi troncati: click per espandere, hover per il valore intero.</div>` +
+		`<div class="tablewrap"><table class="wide"><thead>${thead}</thead><tbody>${trs}</tbody></table></div>`;
+
+	body.querySelectorAll('td.clip').forEach(td => {
+		td.addEventListener('click', () => td.classList.toggle('open'));
+	});
+}
+
+/* ========== MAPPA SESSIONI (Leaflet) ========== */
+function loadStyleOnce(href) {
+	return new Promise((resolve, reject) => {
+		if ([...document.styleSheets].some(s => s.href === href)) return resolve();
+		const l = document.createElement('link');
+		l.rel = 'stylesheet'; l.href = href;
+		l.onload = resolve;
+		l.onerror = () => reject(new Error('CSS non caricato: ' + href));
+		document.head.appendChild(l);
+	});
+}
+function loadScriptOnce(src) {
+	return new Promise((resolve, reject) => {
+		if ([...document.scripts].some(s => s.src === src)) return resolve();
+		const s = document.createElement('script');
+		s.src = src;
+		s.onload = resolve;
+		s.onerror = () => reject(new Error('Script non caricato: ' + src));
+		document.head.appendChild(s);
+	});
+}
+let _mapLibs = null;
+function loadMapLibs() {
+	if (_mapLibs) return _mapLibs;
+	_mapLibs = loadStyleOnce('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css')
+		.then(() => loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'))
+		.then(() => loadScriptOnce('https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js'));
+	return _mapLibs;
+}
+
+const mapState = {
+	all: [], mode: 'heat',
+	filter: { period: '90', from: '', to: '', userId: 'all' },
+	map: null, heatLayer: null, areaLayer: null, users: []
+};
+
+function filteredLocations() {
+	const f = mapState.filter;
+	let pts = mapState.all;
+	if (f.userId !== 'all') pts = pts.filter(p => p.user_id === f.userId);
+	let from = null, to = null;
+	if (f.from || f.to) {
+		if (f.from) from = new Date(f.from + 'T00:00:00');
+		if (f.to) to = new Date(f.to + 'T23:59:59');
+	} else if (f.period !== 'all') {
+		from = new Date(Date.now() - Number(f.period) * 86400000);
+	}
+	if (from) pts = pts.filter(p => new Date(p.logged_at) >= from);
+	if (to) pts = pts.filter(p => new Date(p.logged_at) <= to);
+	return pts;
+}
+
+function cellDegForZoom(z) {
+	const base = 360 / Math.pow(2, z);
+	return Math.max(0.004, base / 6);
+}
+
+function aggregateByGrid(points, cell) {
+	const m = new Map();
+	points.forEach(p => {
+		const lat = Number(p.lat), lng = Number(p.lng);
+		if (!isFinite(lat) || !isFinite(lng)) return;
+		const gy = Math.floor(lat / cell), gx = Math.floor(lng / cell);
+		const k = gy + '|' + gx;
+		let c = m.get(k);
+		if (!c) { c = { n: 0, latSum: 0, lngSum: 0, grams: 0, users: new Set(), names: {} }; m.set(k, c); }
+		c.n++; c.latSum += lat; c.lngSum += lng;
+		c.grams += (Number(p.fumo_grams) || 0) + (Number(p.erba_grams) || 0);
+		c.users.add(p.user_id);
+		const nm = p.location_name || '';
+		if (nm) c.names[nm] = (c.names[nm] || 0) + 1;
+	});
+	return [...m.values()].map(c => {
+		const topName = Object.keys(c.names).sort((a, b) => c.names[b] - c.names[a])[0] || '';
+		return { lat: c.latSum / c.n, lng: c.lngSum / c.n, n: c.n, grams: c.grams, users: c.users.size, topName };
+	});
+}
+
+function renderMapLayers(fit) {
+	const L = window.L;
+	if (!mapState.map) return;
+	const pts = filteredLocations();
+
+	if (mapState.heatLayer) { mapState.map.removeLayer(mapState.heatLayer); mapState.heatLayer = null; }
+	if (mapState.areaLayer) { mapState.map.removeLayer(mapState.areaLayer); mapState.areaLayer = null; }
+
+	if (mapState.mode === 'heat') {
+		mapState.heatLayer = L.heatLayer(
+			pts.map(p => [Number(p.lat), Number(p.lng), 1]),
+			{
+				radius: 26, blur: 18, maxZoom: 12, minOpacity: 0.25,
+				gradient: { 0.2: '#1b5e20', 0.4: '#2e7d32', 0.6: '#4caf50', 0.8: '#8bc34a', 1.0: '#dce775' }
+			}
+		).addTo(mapState.map);
+	} else {
+		const cell = cellDegForZoom(mapState.map.getZoom());
+		const groups = aggregateByGrid(pts, cell);
+		const layer = L.layerGroup();
+		groups.forEach(g => {
+			const label = g.n;
+			const icon = L.divIcon({
+				className: '',
+				html: `<div class="sess-badge">${g.topName ? escapeHtml(g.topName) + ' · ' : ''}${label}</div>`,
+				iconSize: null, iconAnchor: [18, 12]
+			});
+			L.marker([g.lat, g.lng], { icon }).bindPopup(
+				`<strong>${g.topName ? escapeHtml(g.topName) : 'Area'}</strong><br>` +
+				`${g.n} session${g.n === 1 ? 'e' : 'i'}<br>` +
+				`${g.users} utent${g.users === 1 ? 'e' : 'i'}<br>` +
+				`${g.grams.toFixed(1)} g totali`
+			).addTo(layer);
+		});
+		mapState.areaLayer = layer.addTo(mapState.map);
+	}
+
+	el('mapMeta').textContent =
+		`${pts.length} session${pts.length === 1 ? 'e' : 'i'} · ` +
+		`${new Set(pts.map(p => p.user_id)).size} utenti` +
+		(mapState.mode === 'area' ? ` · griglia ~${(cellDegForZoom(mapState.map.getZoom()) * 111).toFixed(0)} km` : '');
+
+	if (fit && pts.length) {
+		const b = window.L.latLngBounds(pts.map(p => [Number(p.lat), Number(p.lng)]));
+		if (b.isValid()) mapState.map.fitBounds(b.pad(0.15));
+	}
+}
+
+function buildMapUI() {
+	const body = el('sec-map').querySelector('.sec-body');
+	const userOpts = ['<option value="all">Tutti gli utenti</option>']
+		.concat(mapState.users.map(u =>
+			`<option value="${escapeHtml(u.user_id)}">${escapeHtml(u.username || u.email || u.user_id)}</option>`))
+		.join('');
+	body.innerHTML = `
+		<div class="mode-toggle" id="mapModeToggle">
+			<button data-mode="heat" class="active">Heatmap</button>
+			<button data-mode="area">Aggregazione per area</button>
+		</div>
+		<div class="filters" id="mapFilters">
+			<button class="chip" data-period="7">7 gg</button>
+			<button class="chip" data-period="30">30 gg</button>
+			<button class="chip active" data-period="90">90 gg</button>
+			<button class="chip" data-period="all">Tutto</button>
+			<label class="fld">Dal<input type="date" id="fltFrom"></label>
+			<label class="fld">Al<input type="date" id="fltTo"></label>
+			<select id="fltUser">${userOpts}</select>
+		</div>
+		<div id="sessionMap"></div>
+		<div class="map-meta" id="mapMeta"></div>`;
+
+	el('mapModeToggle').addEventListener('click', (e) => {
+		const btn = e.target.closest('button[data-mode]');
+		if (!btn) return;
+		mapState.mode = btn.dataset.mode;
+		[...el('mapModeToggle').children].forEach(b => b.classList.toggle('active', b === btn));
+		renderMapLayers(false);
+	});
+
+	el('mapFilters').addEventListener('click', (e) => {
+		const chip = e.target.closest('.chip');
+		if (!chip) return;
+		mapState.filter.period = chip.dataset.period;
+		mapState.filter.from = ''; mapState.filter.to = '';
+		el('fltFrom').value = ''; el('fltTo').value = '';
+		[...el('mapFilters').querySelectorAll('.chip')].forEach(c => c.classList.toggle('active', c === chip));
+		renderMapLayers(true);
+	});
+
+	function onRange() {
+		mapState.filter.from = el('fltFrom').value;
+		mapState.filter.to = el('fltTo').value;
+		if (mapState.filter.from || mapState.filter.to) {
+			[...el('mapFilters').querySelectorAll('.chip')].forEach(c => c.classList.remove('active'));
+		}
+		renderMapLayers(true);
+	}
+	el('fltFrom').addEventListener('change', onRange);
+	el('fltTo').addEventListener('change', onRange);
+	el('fltUser').addEventListener('change', () => {
+		mapState.filter.userId = el('fltUser').value;
+		renderMapLayers(true);
+	});
+}
+
+function initSessionMap(locations, users) {
+	mapState.all = (locations || []).filter(p => p.lat != null && p.lng != null);
+	mapState.users = users || [];
+	buildMapUI();
+
+	if (!mapState.all.length) {
+		el('sessionMap').innerHTML = '<div class="center" style="padding:24px">Nessuna sessione con posizione</div>';
+		el('mapMeta').textContent = '';
+		return;
+	}
+
+	loadMapLibs().then(() => {
+		const L = window.L;
+		mapState.map = L.map('sessionMap', { scrollWheelZoom: false }).setView([45.0, 8.0], 6);
+		L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+			attribution: '&copy; OpenStreetMap', maxZoom: 19
+		}).addTo(mapState.map);
+		mapState.map.on('zoomend', () => { if (mapState.mode === 'area') renderMapLayers(false); });
+		setTimeout(() => mapState.map.invalidateSize(), 100);
+		renderMapLayers(true);
+	}).catch(err => {
+		el('sessionMap').innerHTML = '<div class="center" style="padding:24px;color:var(--danger)">Mappa non caricata: ' + escapeHtml(err.message) + '</div>';
+	});
+}
+
+/* ========== RENDER PRINCIPALE ========== */
 function render(data) {
 	const g = data.growth, u = data.usage, a = data.adoption;
 
@@ -133,7 +486,7 @@ function render(data) {
 			<div class="stat"><div class="label">Nuovi 7gg</div><div class="big">${g.new_users.d7}</div><div class="sub">${trendChip(g.new_users.d7, g.new_users_prev.d7)} vs 7gg prec.</div></div>
 			<div class="stat"><div class="label">Nuovi 30gg</div><div class="big">${g.new_users.d30}</div><div class="sub">${trendChip(g.new_users.d30, g.new_users_prev.d30)} vs 30gg prec.</div></div>
 		</div>
-		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Iscrizioni / giorno (30gg)</div>${renderBarChart(g.signups_by_day, { label: 'Iscrizioni per giorno, ultimi 30 giorni' })}</div>`;
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Iscrizioni / giorno (30gg)</div>${renderBarChart(g.signups_by_day, { label: 'Iscrizioni per giorno, ultimi 30 giorni', noun: 'iscrizioni' })}</div>`;
 
 	// --- Utilizzo ---
 	el('sec-usage').querySelector('.sec-body').innerHTML = `
@@ -143,15 +496,18 @@ function render(data) {
 			<div class="stat"><div class="label">DAU (24h)</div><div class="big">${u.dau}</div></div>
 			<div class="stat"><div class="label">MAU (30gg)</div><div class="big">${u.mau}</div><div class="sub">DAU/MAU ${u.dau_mau_pct}%</div></div>
 		</div>
-		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Sessioni / giorno (30gg) — ultimi 7gg: ${u.sessions_7}</div>${renderBarChart(u.sessions_by_day_30, { label: 'Sessioni per giorno, ultimi 30 giorni' })}</div>`;
+		<div style="margin-top:12px"><div class="label" style="font-size:11px;color:var(--color-text-muted)">Sessioni / giorno (30gg) — ultimi 7gg: ${u.sessions_7}</div>${renderBarChart(u.sessions_by_day_30, { label: 'Sessioni per giorno, ultimi 30 giorni', noun: 'sessioni' })}</div>`;
 
 	// --- Adozione feature ---
 	const sb = a.streak_buckets;
 	const maxBucket = Math.max(1, sb.zero, sb.d1_7, sb.d8_30, sb.d31_plus);
-	const bucketRow = (label, n) => `<div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+	const bucketRow = (label, n) => {
+		const tip = `<b>Streak ${escapeHtml(label)}</b><br>${n} utenti`;
+		return `<div style="display:flex;align-items:center;gap:8px;margin-top:6px" data-tip="${escapeHtml(tip)}">
 		<span style="width:56px;font-size:12px;color:var(--color-text-secondary)">${label}</span>
 		<div class="bar-track" style="flex:1;margin-top:0"><div class="bar-fill" style="width:${(n / maxBucket) * 100}%"></div></div>
 		<span style="width:24px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums">${n}</span></div>`;
+	};
 	el('sec-adoption').querySelector('.sec-body').innerHTML = `
 		<div class="grid">
 			${pctRow('Shared session', a.pct_shared_session)}
@@ -173,6 +529,15 @@ function render(data) {
 	el('sec-recent').querySelector('.sec-body').innerHTML = `
 		<table><thead><tr><th>Registrato</th><th>Username</th><th class="num">Sessioni</th></tr></thead>
 		<tbody>${rows || '<tr><td colspan="3" style="color:var(--color-text-muted)">Nessun utente</td></tr>'}</tbody></table>`;
+
+	// --- Ultime 20 sessioni ---
+	renderRecentSessions(data.recent_sessions || []);
+
+	// tooltip su tutti i grafici/barre appena renderizzati
+	wireTips(el('dashboard'));
+
+	// --- Mappa sessioni ---
+	initSessionMap(data.session_locations || [], data.session_users || []);
 }
 
 let supabaseClient;
@@ -190,7 +555,6 @@ async function loadDashboard() {
 }
 
 async function init() {
-	// supabase-js is loaded with `defer`; wait for it if needed.
 	if (!window.supabase) {
 		await new Promise((res, rej) => {
 			let waited = 0;
