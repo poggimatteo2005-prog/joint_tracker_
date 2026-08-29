@@ -185,6 +185,27 @@
     "noLocation": "nessuna posizione",
     "editLink": "modifica"
   },
+  "feed": {
+    "emptyNoFriendsTitle": "Il tuo feed è vuoto",
+    "emptyNoFriendsCta": "Aggiungi amici per vedere le loro istantanee qui.",
+    "addFriendBtn": "Aggiungi un amico",
+    "emptyNoSnapshots": "Ancora nessuna istantanea. Quando tu o i tuoi amici allegate una foto a una sessione, compare qui.",
+    "loadError": "Errore nel caricamento del feed.",
+    "react": "Reagisci",
+    "reactionsA11y": "Scegli una reazione",
+    "commentsCount_one": "{count} commento",
+    "commentsCount_other": "{count} commenti",
+    "commentPlaceholder": "Scrivi un commento…",
+    "send": "Invia",
+    "deleteCommentConfirm": "Eliminare questo commento?",
+    "you": "Tu"
+  },
+  "notif": {
+    "snapshotReactions_one": "{count} reazione alla tua istantanea",
+    "snapshotReactions_other": "{count} reazioni alla tua istantanea",
+    "snapshotComments_one": "{count} commento alla tua istantanea",
+    "snapshotComments_other": "{count} commenti alla tua istantanea"
+  },
   "gallery": {
     "title": "📷 Galleria",
     "photoTooLarge": "Foto troppo grande (max 8MB).",
@@ -192,6 +213,7 @@
     "loadPhotosError": "Errore nel caricamento delle foto.",
     "loadPhotoError": "Errore nel caricamento della foto.",
     "deletePhotoConfirm": "Eliminare questa foto?",
+    "deleteSnapshotConfirmWithEngagement": "Eliminando questa istantanea perderai anche i commenti e le reazioni collegati. L'operazione non è reversibile. Continuare?",
     "deletePhotoError": "Errore nella rimozione della foto.",
     "photoRemoved": "🗑️ Foto rimossa"
   },

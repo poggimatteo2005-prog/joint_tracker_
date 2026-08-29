@@ -185,6 +185,27 @@
     "noLocation": "no location",
     "editLink": "edit"
   },
+  "feed": {
+    "emptyNoFriendsTitle": "Your feed is empty",
+    "emptyNoFriendsCta": "Add friends to see their snapshots here.",
+    "addFriendBtn": "Add a friend",
+    "emptyNoSnapshots": "No snapshots yet. When you or your friends attach a photo to a session, it shows up here.",
+    "loadError": "Couldn't load the feed.",
+    "react": "React",
+    "reactionsA11y": "Pick a reaction",
+    "commentsCount_one": "{count} comment",
+    "commentsCount_other": "{count} comments",
+    "commentPlaceholder": "Write a comment…",
+    "send": "Send",
+    "deleteCommentConfirm": "Delete this comment?",
+    "you": "You"
+  },
+  "notif": {
+    "snapshotReactions_one": "{count} reaction on your snapshot",
+    "snapshotReactions_other": "{count} reactions on your snapshot",
+    "snapshotComments_one": "{count} comment on your snapshot",
+    "snapshotComments_other": "{count} comments on your snapshot"
+  },
   "gallery": {
     "title": "📷 Gallery",
     "photoTooLarge": "Photo too large (max 8MB).",
@@ -192,6 +213,7 @@
     "loadPhotosError": "Error loading photos.",
     "loadPhotoError": "Error loading photo.",
     "deletePhotoConfirm": "Delete this photo?",
+    "deleteSnapshotConfirmWithEngagement": "Deleting this snapshot also removes its comments and reactions. This can't be undone. Continue?",
     "deletePhotoError": "Error removing the photo.",
     "photoRemoved": "🗑️ Photo removed"
   },
