@@ -965,3 +965,25 @@ input[type="date"] {
 	margin-top: 16px;
 	box-shadow: none;
 }
+
+/* ========== FEED ISTANTANEE ========== */
+.snapshot-feed { display: flex; flex-direction: column; gap: 18px; }
+.feed-card { border: 1px solid rgba(var(--overlay-rgb), 0.10); border-radius: 14px; overflow: hidden; background: rgba(var(--overlay-rgb), 0.03); }
+.feed-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.feed-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
+.feed-avatar-fallback { display: flex; align-items: center; justify-content: center; background: var(--color-primary, #4caf50); color: #fff; font-size: 13px; font-weight: 600; }
+.feed-name { font-weight: 600; font-size: 14px; }
+.feed-when { margin-left: auto; font-size: 12px; color: var(--color-text-muted); }
+.feed-img-wrap { cursor: pointer; background: rgba(var(--overlay-rgb), 0.06); }
+.feed-img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: cover; }
+.feed-img-missing { width: 100%; aspect-ratio: 1; }
+.feed-counts { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 12px 0; font-size: 13px; }
+.feed-actions { display: flex; gap: 8px; padding: 10px 12px 12px; }
+.feed-react { display: inline-flex; }
+.feed-react-btn, .feed-comment-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(var(--overlay-rgb), 0.14); background: transparent; color: var(--color-text); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.feed-react .feed-react-btn { border-radius: 999px 0 0 999px; }
+.feed-react-btn.is-active { border-color: var(--color-primary, #4caf50); }
+.feed-react-caret { border: 1px solid rgba(var(--overlay-rgb), 0.14); border-left: none; background: transparent; color: var(--color-text); border-radius: 0 999px 999px 0; padding: 6px 8px; font-size: 13px; cursor: pointer; opacity: 0.7; }
+.feed-empty { text-align: center; color: var(--color-text-muted); font-size: 13px; padding: 20px 10px; }
+.feed-empty-cta { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.feed-empty-title { font-weight: 600; color: var(--color-text); }

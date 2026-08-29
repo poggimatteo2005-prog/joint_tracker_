@@ -1503,7 +1503,7 @@ async function addPlaceFromMap() {
 			});
 		}
 
-		if (p === 'social' && !isGuestMode) { loadSocial(); loadSnapshots(); loadFriendRequests(); }
+		if (p === 'social' && !isGuestMode) { loadSocial(); loadFeed(); loadFriendRequests(); }
 		if (p === 'stock' || p === 'charts') loadPurchases();
 		if (p === 'charts') loadChartJs().then(renderCharts);
 		if (p === 'settings') {
@@ -2143,51 +2143,148 @@ async function openPhotoViewer(ts) {
 	`;
 }
 
-// ========== ISTANTANEE (foto tue + amici) ==========
-let snapshotItems = [];
+// ========== FEED ISTANTANEE (foto tue + amici) ==========
+let feedItems = [];
+let feedHasFriends = null; // null = sconosciuto, bool dopo il primo load
 
-async function loadSnapshots() {
-	const el = document.getElementById('snapshotsGrid');
+async function loadFeed() {
+	const el = document.getElementById('snapshotFeed');
 	if (!el) return;
 	el.innerHTML = '<div class="spinner"></div>';
 
-	const { data, error } = await supabaseClient.rpc('get_friends_snapshots', { limit_count: 24 });
+	const { data, error } = await supabaseClient.rpc('get_snapshot_feed', { limit_count: 20 });
 	if (error) {
-		console.error('Errore istantanee:', error);
-		el.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--color-text-muted); font-size:13px;">${t('social.loadSnapshotsError')}</p>`;
+		console.error('Errore feed:', error);
+		el.innerHTML = `<p class="feed-empty">${t('feed.loadError')}</p>`;
+		return;
+	}
+	feedItems = (data || []).map(it => ({ ...it, comments: null, commentsOpen: false }));
+
+	if (feedItems.length === 0) {
+		feedHasFriends = await hasAcceptedFriends();
+		el.innerHTML = feedHasFriends
+			? `<p class="feed-empty">${t('feed.emptyNoSnapshots')}</p>`
+			: feedEmptyNoFriendsHtml();
+		bindFeedDelegation(el);
 		return;
 	}
 
-	snapshotItems = data || [];
-
-	if (snapshotItems.length === 0) {
-		el.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--color-text-muted); font-size:13px; padding:10px 0;">${t('social.noSnapshotsYet')}</p>`;
+	const paths = feedItems.map(s => s.photo_path);
+	const { data: signed, error: sErr } = await supabaseClient.storage
+		.from('session-photos')
+		.createSignedUrls(paths, 3600, transformOpts(GALLERY_THUMB_TRANSFORM));
+	if (sErr || !signed) {
+		el.innerHTML = `<p class="feed-empty">${t('feed.loadError')}</p>`;
 		return;
 	}
+	feedItems.forEach((it, i) => { it.signedUrl = signed[i]?.signedUrl || null; });
 
-	const paths = snapshotItems.map(s => s.photo_path);
-	const { data: signedData, error: signedError } = await supabaseClient.storage.from('session-photos').createSignedUrls(paths, 3600, transformOpts(GALLERY_THUMB_TRANSFORM));
+	renderFeed();
+}
 
-	if (signedError || !signedData) {
-		el.innerHTML = `<p style="grid-column:1/-1; text-align:center; color:var(--color-text-muted); font-size:13px;">${t('gallery.loadPhotosError')}</p>`;
-		return;
-	}
+async function hasAcceptedFriends() {
+	const { data, error } = await supabaseClient
+		.from('friendships')
+		.select('id')
+		.eq('user_id', currentUser.id)
+		.eq('status', 'accepted')
+		.limit(1);
+	if (error) { console.error('friendships check:', error); return true; } // in dubbio, non mostrare la CTA
+	return (data || []).length > 0;
+}
 
-	el.innerHTML = snapshotItems.map((s, i) => {
-		const signed = signedData[i]?.signedUrl;
-		if (!signed) return '';
-		const isMe = s.user_id === currentUser.id;
-		return `
-			<div onclick="openSnapshotViewer(${i})" style="position:relative; aspect-ratio:1; border-radius:10px; overflow:hidden; cursor:pointer; background:rgba(var(--overlay-rgb),0.08);">
-				<img src="${signed}" data-path="${s.photo_path}" onerror="fallbackPlainPhoto(this)" loading="lazy" style="width:100%; height:100%; object-fit:cover; display:block;">
-				<span style="position:absolute; bottom:4px; left:4px; right:4px; background:rgba(0,0,0,0.55); color:white; font-size:10px; padding:2px 6px; border-radius:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${isMe ? t('shared.you') : s.username}</span>
+function feedEmptyNoFriendsHtml() {
+	return `
+		<div class="feed-empty feed-empty-cta">
+			<p class="feed-empty-title">${t('feed.emptyNoFriendsTitle')}</p>
+			<p>${t('feed.emptyNoFriendsCta')}</p>
+			<button type="button" class="action-btn" data-action="add-friend-cta">${t('feed.addFriendBtn')}</button>
+		</div>`;
+}
+
+function renderFeed() {
+	const el = document.getElementById('snapshotFeed');
+	if (!el) return;
+	el.innerHTML = feedItems.map((it, i) => feedCardHtml(it, i)).join('');
+	bindFeedDelegation(el);
+}
+
+function feedCardHtml(it, index) {
+	const mine = it.user_id === currentUser.id;
+	const name = mine ? t('feed.you') : escapeHtml(it.username || '?');
+	const avatar = it.avatar_url
+		? `<img class="feed-avatar" src="${escapeHtml(it.avatar_url)}" alt="" loading="lazy">`
+		: `<span class="feed-avatar feed-avatar-fallback">${escapeHtml((it.username || '?').slice(0, 1).toUpperCase())}</span>`;
+	const when = formatNotifTime(feedItemDate(it));
+	const counts = reactionCountsHtml(it.reaction_summary);
+	const img = it.signedUrl
+		? `<img class="feed-img" src="${it.signedUrl}" data-path="${it.photo_path}" onerror="fallbackPlainPhoto(this)" loading="lazy" alt="">`
+		: `<div class="feed-img feed-img-missing"></div>`;
+	return `
+		<article class="feed-card" data-index="${index}" data-snapshot-id="${it.id}">
+			<header class="feed-head">
+				${avatar}
+				<span class="feed-name">${name}</span>
+				<span class="feed-when">${when}</span>
+			</header>
+			<div class="feed-img-wrap" data-action="open-viewer" data-index="${index}">${img}</div>
+			${counts ? `<div class="feed-counts">${counts}</div>` : ''}
+			<div class="feed-actions">
+				<div class="feed-react">
+					<button type="button" class="feed-react-btn${it.my_reaction ? ' is-active' : ''}" data-action="react-tap" data-index="${index}">
+						<span class="feed-react-emoji">${it.my_reaction ? REACTION_EMOJI[it.my_reaction] : '🤍'}</span>
+						<span class="feed-react-label">${it.my_reaction ? '' : t('feed.react')}</span>
+					</button>
+					<button type="button" class="feed-react-caret" data-action="react-palette" data-index="${index}" aria-label="${t('feed.reactionsA11y')}">⌄</button>
+				</div>
+				<button type="button" class="feed-comment-btn" data-action="toggle-comments" data-index="${index}">
+					💬 <span class="feed-comment-count">${it.comment_count}</span>
+				</button>
 			</div>
-		`;
-	}).join('');
+			<div class="feed-comments" data-comments-for="${index}" hidden></div>
+		</article>`;
+}
+
+const REACTION_EMOJI = { heart: '❤️', fire: '🔥', joy: '😂', wow: '😮', clap: '👏' };
+const REACTION_ORDER = ['heart', 'fire', 'joy', 'wow', 'clap'];
+
+function reactionCountsHtml(summary) {
+	if (!summary || typeof summary !== 'object') return '';
+	return REACTION_ORDER
+		.filter(k => summary[k] > 0)
+		.map(k => `<span class="feed-count">${REACTION_EMOJI[k]} ${summary[k]}</span>`)
+		.join('');
+}
+
+function feedItemDate(it) {
+	// it.date (YYYY-MM-DD) + it.time (HH:MM[:SS]) → ISO per formatNotifTime
+	const hhmm = (it.time || '00:00').slice(0, 5);
+	return `${it.date}T${hhmm}:00`;
+}
+
+let feedDelegationBound = false;
+function bindFeedDelegation(el) {
+	if (feedDelegationBound) return;
+	feedDelegationBound = true;
+	el.addEventListener('click', onFeedClick);
+}
+
+function onFeedClick(e) {
+	const target = e.target.closest('[data-action]');
+	if (!target) return;
+	const action = target.dataset.action;
+	const index = Number(target.dataset.index);
+	if (action === 'add-friend-cta') {
+		const input = document.getElementById('friendUsername');
+		if (input) { input.scrollIntoView({ behavior: 'smooth', block: 'center' }); input.focus(); }
+		return;
+	}
+	if (action === 'open-viewer') { openSnapshotViewer(index); return; }
+	// 'react-tap', 'react-palette', 'toggle-comments' → Task 8 / Task 9
 }
 
 async function openSnapshotViewer(index) {
-	const s = snapshotItems[index];
+	const s = feedItems[index];
 	if (!s) return;
 
 	const isMe = s.user_id === currentUser.id;
