@@ -198,7 +198,8 @@
     "commentPlaceholder": "Scrivi un commento…",
     "send": "Invia",
     "deleteCommentConfirm": "Eliminare questo commento?",
-    "you": "Tu"
+    "you": "Tu",
+    "reactionName": { "heart": "Cuore", "fire": "Fuoco", "joy": "Risata", "wow": "Sorpresa", "clap": "Applauso" }
   },
   "notif": {
     "snapshotReactions_one": "{count} reazione alla tua istantanea",

@@ -987,3 +987,6 @@ input[type="date"] {
 .feed-empty { text-align: center; color: var(--color-text-muted); font-size: 13px; padding: 20px 10px; }
 .feed-empty-cta { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .feed-empty-title { font-weight: 600; color: var(--color-text); }
+.feed-palette { position: absolute; z-index: 3000; display: flex; gap: 4px; padding: 6px; border-radius: 999px; background: rgb(var(--surface-rgb)); border: 1px solid rgba(var(--overlay-rgb), 0.18); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
+.feed-palette-btn { border: none; background: transparent; font-size: 22px; line-height: 1; padding: 4px 6px; cursor: pointer; border-radius: 50%; }
+.feed-palette-btn:hover, .feed-palette-btn:focus { background: rgba(var(--overlay-rgb), 0.12); }

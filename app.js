@@ -2262,11 +2262,155 @@ function feedItemDate(it) {
 	return `${it.date}T${hhmm}:00`;
 }
 
+function refreshFeedCard(index) {
+	const el = document.getElementById('snapshotFeed');
+	const card = el && el.querySelector(`.feed-card[data-index="${index}"]`);
+	if (!card) return;
+	const wasOpen = feedItems[index] && feedItems[index].commentsOpen;
+	card.outerHTML = feedCardHtml(feedItems[index], index);
+	if (wasOpen && typeof toggleComments === 'function') toggleComments(index, true); // toggleComments → Task 9
+}
+
+// Reazione ottimistica con rollback: applico subito in locale, poi confermo via RPC.
+async function applyReaction(index, type) {
+	const it = feedItems[index];
+	if (!it) return;
+	const prevSummary = it.reaction_summary;
+	const prevMine = it.my_reaction;
+	it.reaction_summary = adjustSummary(prevSummary, prevMine, type);
+	it.my_reaction = type;
+	refreshFeedCard(index);
+	const { data, error } = await supabaseClient.rpc('set_snapshot_reaction', {
+		p_snapshot_id: it.id, p_reaction_type: type
+	});
+	if (error) {
+		it.reaction_summary = prevSummary;
+		it.my_reaction = prevMine;
+		refreshFeedCard(index);
+		showMessage(t('feed.loadError'));
+		return;
+	}
+	it.reaction_summary = data || {};
+	refreshFeedCard(index);
+}
+
+async function clearReaction(index) {
+	const it = feedItems[index];
+	if (!it || !it.my_reaction) return;
+	const prevSummary = it.reaction_summary;
+	const prevMine = it.my_reaction;
+	it.reaction_summary = adjustSummary(prevSummary, prevMine, null);
+	it.my_reaction = null;
+	refreshFeedCard(index);
+	const { data, error } = await supabaseClient.rpc('remove_snapshot_reaction', { p_snapshot_id: it.id });
+	if (error) {
+		it.reaction_summary = prevSummary;
+		it.my_reaction = prevMine;
+		refreshFeedCard(index);
+		showMessage(t('feed.loadError'));
+		return;
+	}
+	it.reaction_summary = data || {};
+	refreshFeedCard(index);
+}
+
+// Pura: clona il summary, decrementa/rimuove oldType, incrementa newType (newType null = solo rimozione).
+function adjustSummary(summary, oldType, newType) {
+	const s = { ...(summary || {}) };
+	if (oldType && s[oldType]) {
+		s[oldType]--;
+		if (s[oldType] <= 0) delete s[oldType];
+	}
+	if (newType) s[newType] = (s[newType] || 0) + 1;
+	return s;
+}
+
+let openPalette = null; // { index, node }
+
+function openReactionPalette(index, anchorEl) {
+	closeReactionPalette();
+	if (!anchorEl) return;
+	const pal = document.createElement('div');
+	pal.className = 'feed-palette';
+	pal.setAttribute('role', 'menu');
+	pal.innerHTML = REACTION_ORDER.map(k =>
+		`<button type="button" class="feed-palette-btn" role="menuitem" data-react="${k}" aria-label="${t('feed.reactionName.' + k)}">${REACTION_EMOJI[k]}</button>`
+	).join('');
+	document.body.appendChild(pal);
+	const r = anchorEl.getBoundingClientRect();
+	pal.style.top = `${window.scrollY + r.top - pal.offsetHeight - 8}px`;
+	pal.style.left = `${window.scrollX + r.left}px`;
+	pal.addEventListener('click', (e) => {
+		const b = e.target.closest('[data-react]');
+		if (!b) return;
+		applyReaction(index, b.dataset.react);
+		closeReactionPalette();
+	});
+	openPalette = { index, node: pal };
+	setTimeout(() => {
+		document.addEventListener('click', paletteOutside, { once: true });
+		document.addEventListener('scroll', closeReactionPalette, { once: true, capture: true });
+		document.addEventListener('keydown', paletteEsc);
+	}, 0);
+}
+
+function paletteOutside(e) {
+	if (openPalette && !openPalette.node.contains(e.target)) closeReactionPalette();
+}
+function paletteEsc(e) {
+	if (e.key === 'Escape') closeReactionPalette();
+}
+function closeReactionPalette() {
+	if (!openPalette) return;
+	openPalette.node.remove();
+	openPalette = null;
+	document.removeEventListener('keydown', paletteEsc);
+	document.removeEventListener('click', paletteOutside);
+	document.removeEventListener('scroll', closeReactionPalette, { capture: true });
+}
+
 let feedDelegationBound = false;
+let pressTimer = null;
+let pressFired = false;
+let pressStart = null;
+
 function bindFeedDelegation(el) {
 	if (feedDelegationBound) return;
 	feedDelegationBound = true;
 	el.addEventListener('click', onFeedClick);
+	el.addEventListener('pointerdown', onFeedPointerDown);
+	el.addEventListener('pointerup', onFeedPointerUp);
+	el.addEventListener('pointercancel', cancelPress);
+	el.addEventListener('pointermove', onFeedPointerMove);
+}
+
+function onFeedPointerDown(e) {
+	const btn = e.target.closest('[data-action="react-tap"]');
+	if (!btn) return;
+	if (e.target.closest('[data-action="react-palette"]')) return; // il caret lo gestisce il click
+	pressFired = false;
+	pressStart = { x: e.clientX, y: e.clientY };
+	const index = Number(btn.dataset.index);
+	const anchor = btn.closest('.feed-react');
+	clearTimeout(pressTimer);
+	pressTimer = setTimeout(() => {
+		pressFired = true;
+		openReactionPalette(index, anchor);
+	}, 450);
+}
+function onFeedPointerMove(e) {
+	if (!pressStart) return;
+	if (Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y) > 10) cancelPress();
+}
+function onFeedPointerUp() {
+	clearTimeout(pressTimer);
+	pressTimer = null;
+	pressStart = null;
+}
+function cancelPress() {
+	clearTimeout(pressTimer);
+	pressTimer = null;
+	pressStart = null;
 }
 
 function onFeedClick(e) {
@@ -2280,7 +2424,22 @@ function onFeedClick(e) {
 		return;
 	}
 	if (action === 'open-viewer') { openSnapshotViewer(index); return; }
-	// 'react-tap', 'react-palette', 'toggle-comments' → Task 8 / Task 9
+	if (action === 'react-palette') { openReactionPalette(index, e.target.closest('.feed-react')); return; }
+	if (action === 'react-tap') {
+		if (pressFired) {
+			pressFired = false;
+			e.stopPropagation(); // non far propagare al listener outside-click che chiuderebbe la palette appena aperta
+			return;
+		}
+		const it = feedItems[index];
+		if (!it) return;
+		if (it.my_reaction) clearReaction(index); else applyReaction(index, 'heart');
+		return;
+	}
+	if (action === 'toggle-comments') {
+		if (typeof toggleComments === 'function') toggleComments(index); // toggleComments → Task 9
+		return;
+	}
 }
 
 async function openSnapshotViewer(index) {

@@ -198,7 +198,8 @@
     "commentPlaceholder": "Write a comment…",
     "send": "Send",
     "deleteCommentConfirm": "Delete this comment?",
-    "you": "You"
+    "you": "You",
+    "reactionName": { "heart": "Heart", "fire": "Fire", "joy": "Laugh", "wow": "Wow", "clap": "Clap" }
   },
   "notif": {
     "snapshotReactions_one": "{count} reaction on your snapshot",
