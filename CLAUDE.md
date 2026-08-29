@@ -33,6 +33,14 @@ PWA per il tracking di sessioni cannabis con funzionalità social (sessioni cond
   - `profiles_public` (view, non funzione, ma stessa semantica: `security_invoker = false`) — espone solo `id, username, avatar_url` di TUTTI i profili per ricerca amici/classifica, bypassando la RLS di `profiles` che limita ognuno al proprio profilo. **Attenzione**: in produzione questa view è già stata trovata silenziosamente flippata a `security_invoker = on` (probabile modifica manuale in Supabase Studio mai tracciata in una migration) rompendo la ricerca amici senza errori visibili — se il comportamento sembra inconsistente rispetto alle migration, verifica sempre la definizione live via MCP Supabase (`pg_get_viewdef`, `reloptions`) prima di fidarti dei file in `supabase/migrations/`.
   - `insert_own_notification(p_type, p_message)` — `notifications` non ha una policy INSERT per utenti normali (le notifiche cross-utente passano già da funzioni SECURITY DEFINER dedicate, es. `send_friend_request`). Usata dal sistema tolerance break per le notifiche in-app di milestone CB1/check-in: inserisce sempre e solo con `user_id = auth.uid()`, quindi un utente può notificare solo se stesso.
   - `admin_dashboard_stats()` — dashboard di amministrazione owner-only (`/admin`): aggrega `auth.users`, e `smokes`/`tolerance_breaks`/`profiles` di TUTTI gli utenti per crescita/utilizzo/adozione feature; la RLS normalmente limita ognuno alle proprie righe e `auth.users` non è raggiungibile dal client. Protetta da un controllo email hardcoded su `auth.jwt() ->> 'email'` (solo `poggi.matteo.2005@gmail.com`), `execute` concesso solo a `authenticated` e revocato da `anon`/`public`. Nessuna tabella nuova, quindi nessuna nuova RLS policy.
+  - `can_see_snapshot(p_snapshot_id)` — helper: vero se l'istantanea (riga `smokes` con `photo_path`) è tua o di un amico `accepted`. Usato da tutte le RPC feed per il check di visibilità.
+  - `snapshot_reaction_summary(p_snapshot_id)` — aggrega `snapshot_reactions` per tipo (`{"heart":N,…}`); legge reazioni di altri utenti.
+  - `get_snapshot_feed(limit_count)` — feed istantanee: join `smokes`+`profiles`+`friendships` di altri utenti + conteggi reazioni/commenti; sostituisce `get_friends_snapshots` per il feed e in più ritorna `smokes.id`.
+  - `get_snapshot_comments(p_snapshot_id)` — commenti di un'istantanea + `profiles.username` (join cross-utente); solleva `42501` se `can_see_snapshot` è falso.
+  - `set_snapshot_reaction(p_snapshot_id, p_reaction_type)` / `remove_snapshot_reaction(p_snapshot_id)` — upsert/delete della propria reazione su un'istantanea di un amico; `set_` genera la notifica aggregata sull'owner. Scrivono sempre con `user_id = auth.uid()`.
+  - `add_snapshot_comment(p_snapshot_id, p_body)` — inserisce un commento (proprio) su un'istantanea di un amico + notifica aggregata sull'owner.
+  - `delete_snapshot_comment(p_comment_id)` — cancella un commento solo se `user_id = auth.uid()`.
+  - `notify_snapshot_engagement(p_owner, p_type, p_snapshot_id)` — interno (nessun `execute` concesso): `INSERT … ON CONFLICT` sulla riga notifiche del giorno per (owner, tipo, istantanea), incrementa `event_count` e rimette `read=false`. Aggregazione a finestra giorno-solare-UTC.
 - Mai esporre chiavi service_role lato client
 - Edge Functions: validare sempre l'input, mai fidarsi di dati dal client
 
@@ -42,6 +50,7 @@ PWA per il tracking di sessioni cannabis con funzionalità social (sessioni cond
 - Schema RLS policies
 - Logica guest mode / migrazione da guest ad account registrato
 - Sistema achievements (se cambia la logica, gli achievement già sbloccati non devono sparire)
+- **Istantanee/feed**: un'istantanea è una riga `smokes` con `photo_path` non null. Reazioni in `snapshot_reactions` (una per utente/istantanea, 5 tipi fissi), commenti in `snapshot_comments` (thread piatto, 1–500 char), entrambe legate a `smokes.id`. "Cancellare un'istantanea" = `photo_path → null`: il trigger `trg_smokes_snapshot_cleanup_upd` su `smokes` fa il cascade di reazioni/commenti/notifiche. Il feed usa `get_snapshot_feed` (non più `get_friends_snapshots`, ancora in vita finché non rimosso). Spec/plan in `docs/superpowers/`.
 
 ## Comandi utili
 ```
