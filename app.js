@@ -2378,10 +2378,20 @@ function bindFeedDelegation(el) {
 	if (feedDelegationBound) return;
 	feedDelegationBound = true;
 	el.addEventListener('click', onFeedClick);
+	el.addEventListener('keydown', onFeedKeydown);
 	el.addEventListener('pointerdown', onFeedPointerDown);
 	el.addEventListener('pointerup', onFeedPointerUp);
 	el.addEventListener('pointercancel', cancelPress);
 	el.addEventListener('pointermove', onFeedPointerMove);
+}
+
+function onFeedKeydown(e) {
+	const ta = e.target.closest('.feed-comment-input');
+	if (!ta) return;
+	if (e.key === 'Enter' && !e.shiftKey) {
+		e.preventDefault();
+		submitComment(Number(ta.dataset.index));
+	}
 }
 
 function onFeedPointerDown(e) {
@@ -2436,10 +2446,85 @@ function onFeedClick(e) {
 		if (it.my_reaction) clearReaction(index); else applyReaction(index, 'heart');
 		return;
 	}
-	if (action === 'toggle-comments') {
-		if (typeof toggleComments === 'function') toggleComments(index); // toggleComments → Task 9
-		return;
+	if (action === 'toggle-comments') { toggleComments(index); return; }
+	if (action === 'send-comment') { submitComment(index); return; }
+	if (action === 'delete-comment') { removeComment(index, Number(target.dataset.commentId)); return; }
+}
+
+// ---- Commenti (thread piatto) ----
+async function toggleComments(index, forceOpen) {
+	const it = feedItems[index];
+	if (!it) return;
+	const box = document.querySelector(`#snapshotFeed .feed-comments[data-comments-for="${index}"]`);
+	if (!box) return;
+	const open = forceOpen || !it.commentsOpen;
+	it.commentsOpen = open;
+	box.hidden = !open;
+	if (!open) return;
+	if (it.comments === null) {
+		box.innerHTML = '<div class="spinner"></div>';
+		const { data, error } = await supabaseClient.rpc('get_snapshot_comments', { p_snapshot_id: it.id });
+		it.comments = error ? [] : (data || []);
 	}
+	renderComments(index);
+}
+
+function renderComments(index) {
+	const it = feedItems[index];
+	const box = document.querySelector(`#snapshotFeed .feed-comments[data-comments-for="${index}"]`);
+	if (!box) return;
+	const list = (it.comments || []).map(c => `
+		<div class="feed-comment" data-comment-id="${c.id}">
+			<span class="feed-comment-name">${c.is_mine ? t('feed.you') : escapeHtml(c.username || '?')}</span>
+			<span class="feed-comment-body">${escapeHtml(c.body)}</span>
+			<span class="feed-comment-when">${formatNotifTime(c.created_at)}</span>
+			${c.is_mine ? `<button type="button" class="feed-comment-del" data-action="delete-comment" data-index="${index}" data-comment-id="${c.id}" aria-label="${t('feed.deleteCommentConfirm')}">🗑</button>` : ''}
+		</div>`).join('');
+	box.innerHTML = `
+		<div class="feed-comment-list">${list}</div>
+		<div class="feed-comment-form">
+			<textarea class="feed-comment-input" rows="1" maxlength="500" placeholder="${t('feed.commentPlaceholder')}" data-index="${index}"></textarea>
+			<button type="button" class="action-btn feed-comment-send" data-action="send-comment" data-index="${index}">${t('feed.send')}</button>
+		</div>`;
+}
+
+async function submitComment(index) {
+	const it = feedItems[index];
+	const box = document.querySelector(`#snapshotFeed .feed-comments[data-comments-for="${index}"]`);
+	const input = box && box.querySelector('.feed-comment-input');
+	const sendBtn = box && box.querySelector('.feed-comment-send');
+	if (!it || !input) return;
+	const body = input.value.trim();
+	if (!body) return;
+	input.disabled = true;
+	if (sendBtn) sendBtn.disabled = true;
+	const { data, error } = await supabaseClient.rpc('add_snapshot_comment', { p_snapshot_id: it.id, p_body: body });
+	input.disabled = false;
+	if (sendBtn) sendBtn.disabled = false;
+	if (error) { showMessage(t('feed.loadError')); return; }
+	const row = Array.isArray(data) ? data[0] : data;
+	it.comments = [...(it.comments || []), row];
+	it.comment_count = (it.comment_count || 0) + 1;
+	input.value = '';
+	renderComments(index);
+	updateCommentCount(index);
+}
+
+async function removeComment(index, commentId) {
+	if (!confirm(t('feed.deleteCommentConfirm'))) return;
+	const { error } = await supabaseClient.rpc('delete_snapshot_comment', { p_comment_id: commentId });
+	if (error) { showMessage(t('feed.loadError')); return; }
+	const it = feedItems[index];
+	if (!it) return;
+	it.comments = (it.comments || []).filter(c => c.id !== commentId);
+	it.comment_count = Math.max(0, (it.comment_count || 1) - 1);
+	renderComments(index);
+	updateCommentCount(index);
+}
+
+function updateCommentCount(index) {
+	const el = document.querySelector(`#snapshotFeed .feed-card[data-index="${index}"] .feed-comment-count`);
+	if (el && feedItems[index]) el.textContent = feedItems[index].comment_count;
 }
 
 async function openSnapshotViewer(index) {

@@ -990,3 +990,15 @@ input[type="date"] {
 .feed-palette { position: absolute; z-index: 3000; display: flex; gap: 4px; padding: 6px; border-radius: 999px; background: rgb(var(--surface-rgb)); border: 1px solid rgba(var(--overlay-rgb), 0.18); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
 .feed-palette-btn { border: none; background: transparent; font-size: 22px; line-height: 1; padding: 4px 6px; cursor: pointer; border-radius: 50%; }
 .feed-palette-btn:hover, .feed-palette-btn:focus { background: rgba(var(--overlay-rgb), 0.12); }
+.feed-comments { padding: 0 12px 12px; border-top: 1px solid rgba(var(--overlay-rgb), 0.08); }
+.feed-comment-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.feed-comment { font-size: 13px; line-height: 1.4; color: var(--color-text); }
+.feed-comment-name { font-weight: 600; margin-right: 6px; }
+.feed-comment-body { overflow-wrap: anywhere; }
+.feed-comment-when { color: var(--color-text-muted); font-size: 11px; margin-left: 6px; }
+.feed-comment-del { border: none; background: transparent; cursor: pointer; font-size: 12px; margin-left: 6px; opacity: 0.6; line-height: 1; }
+.feed-comment-del:hover, .feed-comment-del:focus { opacity: 1; }
+.feed-comment-form { display: flex; gap: 8px; align-items: flex-end; }
+.feed-comment-input { flex: 1; resize: none; border: 1px solid rgba(var(--overlay-rgb), 0.16); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; background: transparent; color: var(--color-text); }
+.feed-comment-input:disabled { opacity: 0.6; }
+.feed-comment-send { margin-top: 0; width: auto; padding: 8px 14px; flex: 0 0 auto; }
