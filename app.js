@@ -4459,7 +4459,7 @@ async function loadNotifications() {
 	const { data, error } = await supabaseClient
 		.from('notifications')
 		.select('*')
-		.order('created_at', { ascending: false })
+		.order('updated_at', { ascending: false })
 		.limit(30);
 
 	if (error) { console.error('Errore notifiche:', error); return; }
@@ -4467,6 +4467,25 @@ async function loadNotifications() {
 	notifications = data || [];
 	renderNotifications();
 	updateNotifBadge();
+}
+
+function notifText(n) {
+	if (n.type === 'snapshot_reaction') return tn('notif.snapshotReactions', n.event_count || 1);
+	if (n.type === 'snapshot_comment') return tn('notif.snapshotComments', n.event_count || 1);
+	return n.message || '';
+}
+
+function goToSnapshot(snapshotId) {
+	const panel = document.getElementById('notifPanel');
+	if (panel) panel.classList.remove('active');
+	showPage('social');
+	setTimeout(() => {
+		const idx = feedItems.findIndex(it => it.id === snapshotId);
+		if (idx >= 0) {
+			const card = document.querySelector(`#snapshotFeed .feed-card[data-index="${idx}"]`);
+			if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
+	}, 400);
 }
 
 function renderNotifications() {
@@ -4479,11 +4498,20 @@ function renderNotifications() {
 	}
 
 	list.innerHTML = notifications.map(n => `
-		<div style="padding:12px 15px; border-bottom:1px solid rgba(var(--overlay-rgb),0.06); background:${n.read ? 'transparent' : 'rgba(76,175,80,0.08)'};">
-			<p style="margin:0; font-size:13px; color:var(--color-text);">${n.message}</p>
-			<small style="color:var(--color-text-muted);">${formatNotifTime(n.created_at)}</small>
+		<div class="notif-row${n.snapshot_id ? ' notif-clickable' : ''}"${n.snapshot_id ? ` data-snapshot-id="${n.snapshot_id}"` : ''} style="padding:12px 15px; border-bottom:1px solid rgba(var(--overlay-rgb),0.06); background:${n.read ? 'transparent' : 'rgba(76,175,80,0.08)'};">
+			<p style="margin:0; font-size:13px; color:var(--color-text);">${escapeHtml(notifText(n))}</p>
+			<small style="color:var(--color-text-muted);">${formatNotifTime(n.updated_at || n.created_at)}</small>
 		</div>
 	`).join('');
+
+	if (!renderNotifications._bound) {
+		renderNotifications._bound = true;
+		list.addEventListener('click', (e) => {
+			const row = e.target.closest('.notif-clickable');
+			if (!row) return;
+			goToSnapshot(Number(row.dataset.snapshotId));
+		});
+	}
 }
 
 function formatNotifTime(iso) {
@@ -4545,7 +4573,21 @@ function subscribeToNotifications() {
 			notifications.unshift(payload.new);
 			renderNotifications();
 			updateNotifBadge();
-			showMessage('🔔 ' + payload.new.message);
+			showMessage('🔔 ' + notifText(payload.new));
+		})
+		.on('postgres_changes', {
+			event: 'UPDATE',
+			schema: 'public',
+			table: 'notifications',
+			filter: `user_id=eq.${currentUser.id}`
+		}, (payload) => {
+			const i = notifications.findIndex(x => x.id === payload.new.id);
+			if (i >= 0) notifications[i] = payload.new;
+			else notifications.unshift(payload.new);
+			notifications.sort((a, b) =>
+				new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+			renderNotifications();
+			updateNotifBadge();
 		})
 		.subscribe();
 }
