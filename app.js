@@ -2568,10 +2568,18 @@ function closePhotoViewer() {
 
 async function deletePhotoFromViewer() {
 	if (!currentViewerTs) return;
-	if (!confirm(t('gallery.deletePhotoConfirm'))) return;
 
 	const session = smokes.find(s => s.ts === currentViewerTs);
 	if (!session || !session.photo_path) return;
+
+	// se l'istantanea ha reazioni o commenti nel feed, avviso esplicito del cascade
+	const inFeed = feedItems.find(it => it.ts === currentViewerTs);
+	const hasEngagement = inFeed && (
+		(inFeed.comment_count || 0) > 0 ||
+		Object.values(inFeed.reaction_summary || {}).some(n => n > 0)
+	);
+	const msg = hasEngagement ? t('gallery.deleteSnapshotConfirmWithEngagement') : t('gallery.deletePhotoConfirm');
+	if (!confirm(msg)) return;
 
 	await supabaseClient.storage.from('session-photos').remove([session.photo_path]);
 	const { error } = await supabaseClient.from('smokes').update({ photo_path: null }).eq('ts', currentViewerTs);
@@ -2582,6 +2590,7 @@ async function deletePhotoFromViewer() {
 	showMessage(t('gallery.photoRemoved'));
 	await loadData();
 	await loadGallery();
+	if (typeof loadFeed === 'function') await loadFeed();
 }
 
 // ========== MODIFICA POSIZIONE A POSTERIORI ==========
