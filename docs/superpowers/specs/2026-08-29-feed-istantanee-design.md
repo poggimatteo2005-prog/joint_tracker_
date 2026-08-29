@@ -11,6 +11,7 @@
 - **§4.5**: la view `snapshot_engagement` è `security_invoker = true` (non security-definer) — nessun consumatore client, e così non aggiunge un ERROR al linter Supabase.
 - **§6.2 markup reazioni**: il caret della palette è un `<button>` fratello di `.feed-react-btn` dentro `.feed-react`, non uno span annidato (HTML valido).
 - Verifica autenticata end-to-end (UI reazioni/commenti/notifiche realtime) delegata a Matteo post-deploy — l'ambiente SDD non può fare login. Le RPC e la visibilità sono verificate via SQL simulando i ruoli.
+- **Notifiche in-app solo al page load**: la publication `supabase_realtime` non contiene alcuna tabella (stato infrastrutturale pre-esistente, non regressione di questo branch), quindi `subscribeToNotifications` (handler INSERT + il nuovo handler UPDATE) è inerte finché `notifications` non viene aggiunta alla publication (`alter publication supabase_realtime add table public.notifications`). Il codice client è già corretto per quando verrà abilitato (l'echo guard nel handler UPDATE evita N re-render sul bulk update di `markAllNotificationsRead`).
 
 ## 1. Goal
 

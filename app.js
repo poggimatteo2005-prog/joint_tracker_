@@ -2215,7 +2215,7 @@ function feedCardHtml(it, index) {
 	const avatar = it.avatar_url
 		? `<img class="feed-avatar" src="${escapeHtml(it.avatar_url)}" alt="" loading="lazy">`
 		: `<span class="feed-avatar feed-avatar-fallback">${escapeHtml((it.username || '?').slice(0, 1).toUpperCase())}</span>`;
-	const when = formatNotifTime(feedItemDate(it));
+	const when = formatNotifTime(Number(it.ts));
 	const counts = reactionCountsHtml(it.reaction_summary);
 	const img = it.signedUrl
 		? `<img class="feed-img" src="${it.signedUrl}" data-path="${it.photo_path}" onerror="fallbackPlainPhoto(this)" loading="lazy" alt="">`
@@ -2256,19 +2256,24 @@ function reactionCountsHtml(summary) {
 		.join('');
 }
 
-function feedItemDate(it) {
-	// it.date (YYYY-MM-DD) + it.time (HH:MM[:SS]) → ISO per formatNotifTime
-	const hhmm = (it.time || '00:00').slice(0, 5);
-	return `${it.date}T${hhmm}:00`;
-}
-
 function refreshFeedCard(index) {
 	const el = document.getElementById('snapshotFeed');
 	const card = el && el.querySelector(`.feed-card[data-index="${index}"]`);
 	if (!card) return;
-	const wasOpen = feedItems[index] && feedItems[index].commentsOpen;
-	card.outerHTML = feedCardHtml(feedItems[index], index);
+	const it = feedItems[index];
+	if (!it) return;
+	const wasOpen = it.commentsOpen;
+	const draft = card.querySelector('.feed-comment-input')?.value;
+	card.outerHTML = feedCardHtml(it, index);
 	if (wasOpen && typeof toggleComments === 'function') toggleComments(index, true); // toggleComments → Task 9
+	if (typeof draft === 'string' && draft !== '') {
+		const input = document.querySelector(`#snapshotFeed .feed-comments[data-comments-for="${index}"] .feed-comment-input`);
+		if (input) {
+			input.value = draft;
+			input.focus();
+			input.setSelectionRange(draft.length, draft.length);
+		}
+	}
 }
 
 // Reazione ottimistica con rollback: applico subito in locale, poi confermo via RPC.
@@ -2348,7 +2353,7 @@ function openReactionPalette(index, anchorEl) {
 	});
 	openPalette = { index, node: pal };
 	setTimeout(() => {
-		document.addEventListener('click', paletteOutside, { once: true });
+		document.addEventListener('click', paletteOutside);
 		document.addEventListener('scroll', closeReactionPalette, { once: true, capture: true });
 		document.addEventListener('keydown', paletteEsc);
 	}, 0);
@@ -2553,7 +2558,7 @@ async function openSnapshotViewer(index) {
 	viewerImg.src = data.signedUrl;
 	const grams = (s.my_fumo_grams || 0) + (s.my_erba_grams || 0);
 	document.getElementById('photoViewerInfo').innerHTML = `
-		<strong>${isMe ? t('shared.you') : s.username}</strong> · ${formatShortDate(s.date)} · ${s.time}<br>
+		<strong>${isMe ? t('shared.you') : escapeHtml(s.username)}</strong> · ${formatShortDate(s.date)} · ${s.time}<br>
 		<span style="color:var(--color-text-muted); font-size:13px;">
 			${s.type === 'fumo' ? t('common.smoke') : s.type === 'erba' ? t('common.weed') : t('common.smokeWeed')} · ${grams.toFixed(2)}g
 			${s.location_name ? ' · 📍 ' + escapeHtml(s.location_name) : ''}
@@ -2572,12 +2577,22 @@ async function deletePhotoFromViewer() {
 	const session = smokes.find(s => s.ts === currentViewerTs);
 	if (!session || !session.photo_path) return;
 
-	// se l'istantanea ha reazioni o commenti nel feed, avviso esplicito del cascade
+	// se l'istantanea ha reazioni o commenti, avviso esplicito del cascade.
+	// dal feed uso i conteggi già in memoria; dalla Galleria (feed non caricato) chiedo al server.
+	let hasEngagement;
 	const inFeed = feedItems.find(it => it.ts === currentViewerTs);
-	const hasEngagement = inFeed && (
-		(inFeed.comment_count || 0) > 0 ||
-		Object.values(inFeed.reaction_summary || {}).some(n => n > 0)
-	);
+	if (inFeed) {
+		hasEngagement = (inFeed.comment_count || 0) > 0 ||
+			Object.values(inFeed.reaction_summary || {}).some(n => n > 0);
+	} else {
+		try {
+			const { data } = await supabaseClient.rpc('snapshot_engagement_counts', { p_snapshot_id: session.id });
+			const row = Array.isArray(data) ? data[0] : data;
+			hasEngagement = !!row && ((row.reaction_count || 0) > 0 || (row.comment_count || 0) > 0);
+		} catch {
+			hasEngagement = false;
+		}
+	}
 	const msg = hasEngagement ? t('gallery.deleteSnapshotConfirmWithEngagement') : t('gallery.deletePhotoConfirm');
 	if (!confirm(msg)) return;
 
@@ -4582,6 +4597,12 @@ function subscribeToNotifications() {
 			filter: `user_id=eq.${currentUser.id}`
 		}, (payload) => {
 			const i = notifications.findIndex(x => x.id === payload.new.id);
+			// echo di markAllNotificationsRead: bulk update read=true su righe già lette localmente.
+			// Rimpiazzo la riga ma salto il re-render per non ripaginare N volte su un click.
+			if (i >= 0 && payload.new.read === true && notifications[i].read === true) {
+				notifications[i] = payload.new;
+				return;
+			}
 			if (i >= 0) notifications[i] = payload.new;
 			else notifications.unshift(payload.new);
 			notifications.sort((a, b) =>
