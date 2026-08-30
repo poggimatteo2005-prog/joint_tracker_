@@ -13,7 +13,7 @@
 	let currentSocialTab = 'global';
 	let charts = {};
 	let userPlaces = []; // Array per i posti caricati dal DB
-	let sessionParticipants = []; // { user_id, username }
+	let sessionParticipants = []; // { user_id, username, avatar_url }
 	let isLocatingNow = false;
 	let isOnline = navigator.onLine;
 	let notifications = [];
@@ -208,7 +208,7 @@ async function getMyFriendsList() {
 
     const { data: profilesData, error: profilesError } = await supabaseClient
         .from('profiles_public')
-        .select('id, username')
+        .select('id, username, avatar_url')
         .in('id', friendIds);
 
     if (profilesError) {
@@ -218,6 +218,11 @@ async function getMyFriendsList() {
 
     return profilesData || [];
 }
+
+// Cache dell'ultima lista amici resa dalla quick-list: quickAddParticipant()
+// la consulta per id invece di ricevere username/avatar_url in un onclick inline
+// (pattern user-string-in-onclick evitato — vedi Task 8).
+let friendsQuickCache = [];
 
 async function renderFriendsQuickList() {
     const el = document.getElementById('friendsQuickList');
@@ -237,17 +242,20 @@ async function renderFriendsQuickList() {
         return;
     }
 
+    friendsQuickCache = friends;
     el.innerHTML = friends.map(f => `
-        <button type="button" onclick="quickAddParticipant('${f.id}','${f.username}')"
-            style="background:rgba(76,175,80,0.12); border:1px solid rgba(76,175,80,0.3); color:var(--heading); border-radius:20px; padding:6px 12px; font-size:13px; cursor:pointer;">
-            + ${f.username}
-        </button>
+		<button type="button" onclick="quickAddParticipant('${f.id}')" class="friend-quick-btn">
+			${avatarMarkup(f.avatar_url, f.username, 22)}
+			<span>+ ${escapeHtml(f.username)}</span>
+		</button>
     `).join('');
 }
 
-function quickAddParticipant(id, username) {
+function quickAddParticipant(id) {
     if (sessionParticipants.some(p => p.user_id === id)) return;
-    sessionParticipants.push({ user_id: id, username });
+    const friend = friendsQuickCache.find(f => f.id === id);
+    if (!friend) return;
+    sessionParticipants.push({ user_id: id, username: friend.username, avatar_url: friend.avatar_url || null });
     renderParticipantChips();
 }
 
@@ -258,7 +266,7 @@ async function searchParticipant() {
 
     const { data, error } = await supabaseClient
         .from('profiles_public')
-        .select('id, username')
+        .select('id, username, avatar_url')
         .ilike('username', query)
         .neq('id', currentUser.id);
 
@@ -272,7 +280,7 @@ async function searchParticipant() {
         return alert(t('shared.alreadyAdded'));
     }
 
-    sessionParticipants.push({ user_id: match.id, username: match.username });
+    sessionParticipants.push({ user_id: match.id, username: match.username, avatar_url: match.avatar_url || null });
     input.value = "";
     renderParticipantChips();
 }
@@ -286,7 +294,7 @@ function renderParticipantChips() {
     const el = document.getElementById('participantChips');
     if (!el) return;
     el.innerHTML = sessionParticipants.map(p => `
-        <span class="participant-chip">👤 ${p.username} <button onclick="removeParticipant('${p.user_id}')">✕</button></span>
+		<span class="participant-chip">${avatarMarkup(p.avatar_url, p.username, 18)} ${escapeHtml(p.username)} <button onclick="removeParticipant('${p.user_id}')">✕</button></span>
     `).join('');
     renderContributorsPanel();
 }
@@ -298,7 +306,7 @@ function renderContributorsPanel() {
 
     const hasFumo = document.getElementById("fumo").checked;
     const hasErba = document.getElementById("erba").checked;
-    const all = [{ user_id: currentUser.id, username: t('shared.you') }, ...sessionParticipants];
+    const all = [{ user_id: currentUser.id, username: t('shared.you'), avatar_url: (currentUserProfile && currentUserProfile.avatar_url) || null }, ...sessionParticipants];
 
     let fumoTotal = 0, erbaTotal = 0;
     if (hasFumo && hasErba) {
@@ -326,7 +334,7 @@ function renderContributorsPanel() {
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px; font-weight:normal; flex:1; margin-top:0;">
                     <input type="checkbox" class="contrib-fumo" value="${p.user_id}"
                         ${activeIds.includes(p.user_id) ? 'checked' : ''}
-                        onchange="renderContributorsPanel()" style="width:auto;"> ${p.username}
+                        onchange="renderContributorsPanel()" style="width:auto;"> ${avatarMarkup(p.avatar_url, p.username, 18)} ${escapeHtml(p.username)}
                 </label>
                 <input type="number" step="0.01" min="0" class="contrib-fumo-amt" data-user="${p.user_id}"
                     value="${activeIds.includes(p.user_id) ? share : '0.00'}"
@@ -347,7 +355,7 @@ function renderContributorsPanel() {
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px; font-weight:normal; flex:1; margin-top:0;">
                     <input type="checkbox" class="contrib-erba" value="${p.user_id}"
                         ${activeIds.includes(p.user_id) ? 'checked' : ''}
-                        onchange="renderContributorsPanel()" style="width:auto;"> ${p.username}
+                        onchange="renderContributorsPanel()" style="width:auto;"> ${avatarMarkup(p.avatar_url, p.username, 18)} ${escapeHtml(p.username)}
                 </label>
                 <input type="number" step="0.01" min="0" class="contrib-erba-amt" data-user="${p.user_id}"
                     value="${activeIds.includes(p.user_id) ? share : '0.00'}"

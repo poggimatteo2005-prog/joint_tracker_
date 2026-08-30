@@ -884,6 +884,18 @@ input[type="date"] {
 	padding: 0;
 	line-height: 1;
 }
+.friend-quick-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: rgba(76,175,80,0.12);
+	border: 1px solid rgba(76,175,80,0.3);
+	color: var(--heading);
+	border-radius: 20px;
+	padding: 5px 12px 5px 6px;
+	font-size: 13px;
+	cursor: pointer;
+}
 
 /* ========== TOGGLE TEMA (header + impostazioni) ========== */
 .theme-toggle-btn {
