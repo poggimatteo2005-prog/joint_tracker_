@@ -383,6 +383,7 @@ document.getElementById("customGrams").addEventListener('input', updateDivideMes
 			if (hadGuestData) {
 				await migrateGuestDataToAccount(currentUser.id);
 			}
+			await migrateGuestAvatar(currentUser.id);
 		} else if (isGuestModeStored()) {
 			// Rientra in guest mode senza ri-tracciare l'evento: è già stato tracciato
 			// la prima volta che l'utente ha premuto "Prova senza registrarti".
@@ -592,6 +593,7 @@ if (mode === 'signup') {
 			if (wasGuestWithData) {
 				await migrateGuestDataToAccount(currentUser.id);
 			}
+			await migrateGuestAvatar(currentUser.id);
 			showMessage(t('auth.welcome'));
 		} catch (err) {
 			showError(err.message);
@@ -2060,6 +2062,22 @@ function getGuestAvatar() {
 }
 function setGuestAvatar(val) { try { localStorage.setItem(GUEST_AVATAR_KEY, val); } catch (e) {} }
 function clearGuestAvatar() { try { localStorage.removeItem(GUEST_AVATAR_KEY); } catch (e) {} }
+
+// Migra il preset avatar da localStorage al profilo dell'utente. Chiamata
+// a ogni ingresso in un account (login/signup), indipendentemente dal fatto
+// che ci fossero smokes/purchases guest da migrare.
+async function migrateGuestAvatar(userId) {
+	const val = getGuestAvatar();
+	if (!val) return;
+	try {
+		const { error } = await supabaseClient.from('profiles').upsert({ id: userId, avatar_url: val });
+		if (error) throw error;
+		clearGuestAvatar();
+		if (currentUserProfile) currentUserProfile.avatar_url = val;
+	} catch (e) {
+		console.error('migrateGuestAvatar:', e); // i dati guest restano, si riprova al prossimo login
+	}
+}
 
 function currentAvatarValue() {
 	return isGuestMode ? getGuestAvatar() : (currentUserProfile && currentUserProfile.avatar_url) || null;
