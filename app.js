@@ -2388,6 +2388,42 @@ function setAvatarPreviewLoading(on) {
 	if (preview) preview.classList.toggle('avatar-loading', !!on);
 }
 
+// --- upload / cleanup Storage ---
+const AVATARS_BUCKET = 'avatars';
+
+async function removeUploadedAvatarFiles() {
+	if (isGuestMode || !currentUser) return;
+	try {
+		await supabaseClient.storage.from(AVATARS_BUCKET).remove([
+			`${currentUser.id}/avatar.webp`,
+			`${currentUser.id}/avatar.jpg`,
+		]);
+	} catch (e) { /* best-effort: il file può non esistere */ }
+}
+
+async function uploadAvatarBlob({ blob, ext }) {
+	if (isGuestMode || !currentUser) throw new Error('upload avatar non disponibile in guest');
+	const path = `${currentUser.id}/avatar.${ext}`;
+	const contentType = ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+	// nome file può cambiare estensione tra upload -> togli entrambi prima
+	await removeUploadedAvatarFiles();
+
+	const up = await supabaseClient.storage.from(AVATARS_BUCKET)
+		.upload(path, blob, { upsert: true, contentType });
+	if (up.error) throw up.error;
+
+	const pub = supabaseClient.storage.from(AVATARS_BUCKET).getPublicUrl(path);
+	const publicUrl = `${pub.data.publicUrl}?v=${Date.now()}`;
+
+	const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: publicUrl });
+	if (error) throw error;
+
+	currentUserProfile = { ...(currentUserProfile || {}), avatar_url: publicUrl };
+	renderAvatarSettings();
+	refreshMountedAvatars();
+}
+
 // ========== FOTO SESSIONE ==========
 let selectedPhotoFile = null;
 
