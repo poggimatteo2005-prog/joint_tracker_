@@ -2011,6 +2011,13 @@ const PRESET_AVATARS = {
 };
 const PRESET_KEYS = Object.keys(PRESET_AVATARS);
 
+// Solo un file sotto questo prefisso (bucket pubblico "avatars") è reso come <img>.
+// Qualsiasi altra URL in avatar_url degrada all'iniziale — impedisce che un valore
+// manomesso (RLS permette a un utente di scrivere stringhe arbitrarie sulla propria
+// riga profiles) diventi un <img src> remoto nella leaderboard di tutti gli altri.
+// Vincolato anche lato DB dal CHECK profiles_avatar_url_shape.
+const AVATAR_URL_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/avatars/`;
+
 function presetEmoji(key) {
 	return Object.prototype.hasOwnProperty.call(PRESET_AVATARS, key) ? PRESET_AVATARS[key] : null;
 }
@@ -2038,9 +2045,9 @@ function avatarMarkup(avatarUrl, username, sizePx = 32) {
 			return `<span class="avatar avatar-preset" style="${dims}font-size:${Math.round(px * 0.55)}px;" aria-hidden="true">${emoji}</span>`;
 		}
 		// key ignota -> degrada a iniziale
-	} else if (typeof avatarUrl === 'string' && /^https?:\/\//i.test(avatarUrl)) {
-		return `<img class="avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name)}" `
-			+ `width="${px}" height="${px}" loading="lazy" `
+	} else if (typeof avatarUrl === 'string' && avatarUrl.startsWith(AVATAR_URL_PREFIX)) {
+		return `<img class="avatar" src="${escapeHtml(avatarUrl)}" alt="" `
+			+ `width="${px}" height="${px}" loading="lazy" referrerpolicy="no-referrer" `
 			+ `data-initial="${initial}" data-hue="${escapeHtml(hslFromHash(name))}" `
 			+ `onerror="avatarImgFallback(this)">`;
 	}
@@ -2183,11 +2190,12 @@ async function removeAvatar() {
 // Ridisegna le superfici avatar attualmente montate nel DOM dopo un cambio.
 // Le pagine non montate si aggiornano al loro prossimo load.
 function refreshMountedAvatars() {
+	// Solo la leaderboard, e solo se è la pagina attiva (spec §5.3: le altre
+	// superfici si aggiornano al prossimo caricamento). loadFeed() NON va chiamato
+	// qui: resetta comments/commentsOpen (chiude i thread aperti) e fa un
+	// get_snapshot_feed + createSignedUrls per ogni click preset.
 	if (document.getElementById('page-social')?.classList.contains('active')) {
 		if (typeof loadSocial === 'function') loadSocial();
-	}
-	if (document.getElementById('snapshotFeed')?.children.length) {
-		if (typeof loadFeed === 'function') loadFeed();
 	}
 }
 
@@ -2390,7 +2398,6 @@ async function confirmAvatarCrop() {
 	const errEl = document.getElementById('avatarCropError');
 	errEl.style.display = 'none';
 	btn.disabled = true;
-	const previous = currentAvatarValue();
 	setAvatarPreviewLoading(true);
 	try {
 		const out = await exportCroppedAvatar();
@@ -2404,8 +2411,7 @@ async function confirmAvatarCrop() {
 		btn.disabled = false;
 	} finally {
 		setAvatarPreviewLoading(false);
-		renderAvatarSettings(); // ripristina preview (previous invariato in caso d'errore)
-		void previous;
+		renderAvatarSettings(); // ripristina preview (avatar corrente invariato in caso d'errore)
 	}
 }
 
