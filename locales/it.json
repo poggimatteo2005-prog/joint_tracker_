@@ -645,7 +645,6 @@
     "confirmRevokeDevice": "Disattivare le notifiche push per questo dispositivo?",
     "deviceRemoved": "🗑️ Dispositivo rimosso",
     "logout": "🚪 Logout",
-    "avatarTitle": "Immagine del profilo",
     "avatarUploadMode": "Carica foto",
     "avatarPresetMode": "Scegli icona",
     "avatarChooseImage": "Scegli immagine",
@@ -658,7 +657,6 @@
     "avatarUpdated": "Immagine del profilo aggiornata",
     "avatarRemoved": "Immagine del profilo rimossa",
     "avatarUploadError": "Caricamento non riuscito, riprova.",
-    "avatarUploading": "Caricamento…",
     "avatarFormatError": "Formato non supportato. Usa JPG, PNG o WebP.",
     "avatarTooLarge": "Immagine troppo grande (massimo 10 MB)."
   }

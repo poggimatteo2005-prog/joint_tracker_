@@ -645,7 +645,6 @@
     "confirmRevokeDevice": "Turn off push notifications for this device?",
     "deviceRemoved": "🗑️ Device removed",
     "logout": "🚪 Logout",
-    "avatarTitle": "Profile picture",
     "avatarUploadMode": "Upload photo",
     "avatarPresetMode": "Pick an icon",
     "avatarChooseImage": "Choose image",
@@ -658,7 +657,6 @@
     "avatarUpdated": "Profile picture updated",
     "avatarRemoved": "Profile picture removed",
     "avatarUploadError": "Upload failed, please try again.",
-    "avatarUploading": "Uploading…",
     "avatarFormatError": "Unsupported format. Use JPG, PNG or WebP.",
     "avatarTooLarge": "Image too large (10 MB max)."
   }

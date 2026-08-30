@@ -1002,7 +1002,7 @@ input[type="date"] {
 
 .avatar-settings { margin: 4px 0 16px; }
 .avatar-settings-row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
-.avatar-remove-btn { margin-top: 0; width: auto; padding: 6px 14px; font-size: 13px; }
+button.avatar-remove-btn { margin-top: 0; width: auto; padding: 6px 14px; font-size: 13px; }
 .avatar-mode-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
 .avatar-mode-tab {
 	flex: 1; padding: 8px 10px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600;
