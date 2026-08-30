@@ -2442,6 +2442,20 @@ async function uploadAvatarBlob({ blob, ext }) {
 	refreshMountedAvatars();
 }
 
+// Batch: id utente -> avatar_url (grezzo da profiles_public). Una query per render.
+async function fetchAvatarMap(ids) {
+	const uniq = [...new Set((ids || []).filter(Boolean))];
+	const map = new Map();
+	if (uniq.length === 0) return map;
+	const { data, error } = await supabaseClient
+		.from('profiles_public')
+		.select('id, avatar_url')
+		.in('id', uniq);
+	if (error) { console.error('fetchAvatarMap:', error); return map; }
+	(data || []).forEach(r => map.set(r.id, r.avatar_url || null));
+	return map;
+}
+
 // ========== FOTO SESSIONE ==========
 let selectedPhotoFile = null;
 
@@ -3780,6 +3794,8 @@ if (ctxPie) {
 				}
 			}
 
+			const avatarMap = await fetchAvatarMap(data.map(u => u.user_id));
+
 			list.innerHTML = data.map((u, i) => {
 				const rankStr = i < 3 ? ['🥇','🥈','🥉'][i] : `#${i+1}`;
 				const rankClass = i < 3 ? 'top3' : '';
@@ -3790,13 +3806,18 @@ if (ctxPie) {
 					? `<br><small style="color: var(--primary-light); font-weight:600;">${t('social.togetherBadge', { count: shared.sessions_together })}</small>`
 					: '';
 
+				const av = avatarMarkup(
+					u.user_id === currentUser.id ? (currentUserProfile && currentUserProfile.avatar_url) : avatarMap.get(u.user_id),
+					u.username, 30);
+
 				return `
-					<div class="lb-item" onclick="viewFriendStats('${u.user_id}', '${u.username}')"
+					<div class="lb-item" onclick="viewFriendStats('${u.user_id}', '${escapeHtml(u.username)}')"
 						 style="${isMe ? 'background: rgba(76, 175, 80, 0.1);' : ''}">
-						<div style="display: flex; align-items: center;">
+						<div style="display: flex; align-items: center; gap: 8px;">
 							<span class="lb-rank ${rankClass}">${rankStr}</span>
+							${av}
 							<span style="font-weight: ${isMe ? 'bold' : '500'};">
-								${u.username} ${isMe ? t('social.youSuffix') : ''}
+								${escapeHtml(u.username)} ${isMe ? t('social.youSuffix') : ''}
 								${sharedBadge}
 							</span>
 						</div>
@@ -3835,15 +3856,18 @@ if (ctxPie) {
 				return;
 			}
 
+			const avatarMap = await fetchAvatarMap(filtered.map(u => u.friend_id));
+
 			list.innerHTML = filtered.map((u, i) => {
 				const rankStr = i < 3 ? ['🥇','🥈','🥉'][i] : `#${i+1}`;
 				const rankClass = i < 3 ? 'top3' : '';
 
 				return `
-					<div class="lb-item" onclick="viewFriendStats('${u.friend_id}', '${u.username}')">
-						<div style="display: flex; align-items: center;">
+					<div class="lb-item" onclick="viewFriendStats('${u.friend_id}', '${escapeHtml(u.username)}')">
+						<div style="display: flex; align-items: center; gap: 8px;">
 							<span class="lb-rank ${rankClass}">${rankStr}</span>
-							<span style="font-weight: 500;">🤝 ${u.username}</span>
+							${avatarMarkup(avatarMap.get(u.friend_id), u.username, 30)}
+							<span style="font-weight: 500;">🤝 ${escapeHtml(u.username)}</span>
 						</div>
 						<div style="text-align: right;">
 							<span style="font-weight: bold; color: var(--primary);">${u.sessions_together}</span><br>
@@ -3922,6 +3946,12 @@ if (ctxPie) {
 		if (error || !data || data.length === 0) return alert(t('social.unableToLoadStats'));
 
 		document.getElementById('modalFriendName').innerText = t('social.statsOf', { username });
+
+		const { data: prof } = await supabaseClient
+			.from('profiles_public').select('avatar_url').eq('id', targetId).maybeSingle();
+		const avEl = document.getElementById('modalFriendAvatar');
+		if (avEl) avEl.innerHTML = avatarMarkup(prof && prof.avatar_url, username, 40);
+
 		document.getElementById('modaleFumo').innerText = data[0].fumo_g.toFixed(1);
 		document.getElementById('modaleErba').innerText = data[0].erba_g.toFixed(1);
 

@@ -673,8 +673,11 @@ hr {
 
 .lb-rank {
 	font-size: 18px;
-	margin-right: 10px;
 	min-width: 30px;
+}
+
+.lb-item .avatar {
+	flex: 0 0 auto;
 }
 
 .lb-rank.top3 {
