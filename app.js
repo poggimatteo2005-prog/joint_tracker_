@@ -624,6 +624,7 @@ if (mode === 'signup') {
 			renderAchievements();
 			getLocationAuto();
 			await loadPurchases();
+			renderAvatarSettings();
 			return;
 		}
 
@@ -792,7 +793,8 @@ async function flushPendingSessions() {
 		setVisible('photoFeature', !isGuestMode);
 		setVisible('photoLocked', isGuestMode);
 
-		setVisible('profileCard', !isGuestMode);
+		setVisible('profileCard', true);                 // sempre visibile: i guest ci scelgono un preset
+		setVisible('profileIdentityBlock', !isGuestMode); // email + nickname solo per account registrati
 		setVisible('guestConvertCard', isGuestMode);
 		setVisible('remindersPushCard', !isGuestMode);
 		setVisible('remindersPushLocked', isGuestMode);
@@ -2046,6 +2048,121 @@ function avatarImgFallback(img) {
 	span.style.cssText = `width:${img.width}px;height:${img.height}px;font-size:${Math.round(img.width * 0.44)}px;background:${img.dataset.hue || 'hsl(140 45% 45%)'};`;
 	span.textContent = img.dataset.initial || '?';
 	img.replaceWith(span);
+}
+
+// --- stato/preferenza avatar guest (solo preset) ---
+const GUEST_AVATAR_KEY = 'jt_guest_avatar';
+function getGuestAvatar() {
+	try {
+		const v = localStorage.getItem(GUEST_AVATAR_KEY);
+		return v && v.startsWith('preset:') ? v : null;
+	} catch (e) { return null; }
+}
+function setGuestAvatar(val) { try { localStorage.setItem(GUEST_AVATAR_KEY, val); } catch (e) {} }
+function clearGuestAvatar() { try { localStorage.removeItem(GUEST_AVATAR_KEY); } catch (e) {} }
+
+function currentAvatarValue() {
+	return isGuestMode ? getGuestAvatar() : (currentUserProfile && currentUserProfile.avatar_url) || null;
+}
+
+let avatarMode = 'upload'; // 'upload' | 'preset'
+function setAvatarMode(mode) {
+	avatarMode = mode;
+	document.getElementById('avatarModeUpload').classList.toggle('active', mode === 'upload');
+	document.getElementById('avatarModePreset').classList.toggle('active', mode === 'preset');
+	document.getElementById('avatarUploadPane').style.display = mode === 'upload' ? '' : 'none';
+	document.getElementById('avatarPresetPane').style.display = mode === 'preset' ? '' : 'none';
+	clearAvatarError();
+}
+
+function clearAvatarError() {
+	const el = document.getElementById('avatarError');
+	if (el) { el.style.display = 'none'; el.textContent = ''; }
+}
+function showAvatarError(msg) {
+	const el = document.getElementById('avatarError');
+	if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+function renderAvatarSettings() {
+	const preview = document.getElementById('avatarPreview');
+	if (!preview) return;
+	const val = currentAvatarValue();
+	const name = (currentUserProfile && currentUserProfile.username) || (currentUser && currentUser.email) || '?';
+	preview.innerHTML = avatarMarkup(val, name, 72);
+
+	document.getElementById('avatarRemoveBtn').style.display = val ? '' : 'none';
+
+	// guest: niente upload
+	const guest = isGuestMode;
+	document.getElementById('avatarGuestHint').style.display = guest ? 'block' : 'none';
+	document.getElementById('avatarChooseBtn').style.display = guest ? 'none' : '';
+
+	// griglia preset
+	const grid = document.getElementById('avatarPresetGrid');
+	grid.innerHTML = PRESET_KEYS.map(key => {
+		const selected = val === `preset:${key}`;
+		return `<button type="button" class="avatar-preset-cell${selected ? ' is-selected' : ''}" `
+			+ `data-preset-key="${key}" onclick="selectPresetAvatar('${key}')" aria-pressed="${selected}">`
+			+ `${PRESET_AVATARS[key]}</button>`;
+	}).join('');
+}
+
+async function selectPresetAvatar(key) {
+	if (!PRESET_KEYS.includes(key)) return;
+	clearAvatarError();
+	const value = `preset:${key}`;
+
+	if (isGuestMode) {
+		setGuestAvatar(value);
+		renderAvatarSettings();
+		return;
+	}
+
+	try {
+		await removeUploadedAvatarFiles(); // best-effort: se c'era una foto, non lasciarla orfana
+		const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: value });
+		if (error) throw error;
+		currentUserProfile = { ...(currentUserProfile || {}), avatar_url: value };
+		renderAvatarSettings();
+		refreshMountedAvatars();
+		showMessage(t('settings.avatarUpdated'));
+	} catch (e) {
+		console.error('selectPresetAvatar:', e);
+		showAvatarError(t('settings.avatarUploadError'));
+	}
+}
+
+async function removeAvatar() {
+	clearAvatarError();
+	if (isGuestMode) {
+		clearGuestAvatar();
+		renderAvatarSettings();
+		return;
+	}
+	try {
+		await removeUploadedAvatarFiles();
+		const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: null });
+		if (error) throw error;
+		currentUserProfile = { ...(currentUserProfile || {}), avatar_url: null };
+		renderAvatarSettings();
+		refreshMountedAvatars();
+		showMessage(t('settings.avatarRemoved'));
+	} catch (e) {
+		console.error('removeAvatar:', e);
+		showAvatarError(t('settings.avatarUploadError'));
+	}
+}
+
+// Ridisegna le superfici avatar attualmente montate nel DOM dopo un cambio.
+// Le pagine non montate si aggiornano al loro prossimo load.
+function refreshMountedAvatars() {
+	if (document.getElementById('page-social')?.classList.contains('active')) {
+		if (typeof loadSocial === 'function') loadSocial();
+	}
+	if (document.getElementById('snapshotFeed')?.children.length) {
+		if (typeof loadFeed === 'function') loadFeed();
+	}
 }
 
 // ========== FOTO SESSIONE ==========
@@ -3587,14 +3704,18 @@ if (ctxPie) {
 
 		const { data, error } = await supabaseClient
 			.from('profiles')
-			.select('username')
+			.select('username, avatar_url')
 			.eq('id', currentUser.id)
 			.single();
 
-		if (data && data.username) {
-			document.getElementById('currentUsernameDisplay').innerText = data.username;
-			document.getElementById('usernameInput').value = data.username;
+		if (!error && data) {
+			currentUserProfile = { username: data.username || null, avatar_url: data.avatar_url || null };
+			if (data.username) {
+				document.getElementById('currentUsernameDisplay').innerText = data.username;
+				document.getElementById('usernameInput').value = data.username;
+			}
 		}
+		renderAvatarSettings();
 	}
 
 

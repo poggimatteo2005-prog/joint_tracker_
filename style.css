@@ -985,6 +985,25 @@ input[type="date"] {
 :root[data-theme="dark"] .avatar-preset { background: rgba(76, 175, 80, 0.22); }
 .avatar-fallback { /* background impostato inline da hslFromHash */ }
 
+.avatar-settings { margin: 4px 0 16px; }
+.avatar-settings-row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.avatar-remove-btn { margin-top: 0; width: auto; padding: 6px 14px; font-size: 13px; }
+.avatar-mode-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.avatar-mode-tab {
+	flex: 1; padding: 8px 10px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600;
+	border: 1px solid rgba(var(--overlay-rgb), 0.14); background: transparent; color: var(--color-text-secondary);
+}
+.avatar-mode-tab.active { background: rgba(76, 175, 80, 0.14); border-color: rgba(76, 175, 80, 0.4); color: var(--heading); }
+.avatar-pane { margin-top: 4px; }
+.avatar-preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.avatar-preset-cell {
+	aspect-ratio: 1; min-height: 44px; border-radius: 12px; cursor: pointer; font-size: 22px;
+	border: 1px solid rgba(var(--overlay-rgb), 0.12); background: rgba(var(--overlay-rgb), 0.04);
+	display: flex; align-items: center; justify-content: center;
+}
+.avatar-preset-cell.is-selected { border-color: var(--primary); background: rgba(76, 175, 80, 0.16); }
+.avatar-error { color: var(--danger); font-size: 13px; margin: 8px 0 0; }
+
 /* ========== FEED ISTANTANEE ========== */
 .snapshot-feed { display: flex; flex-direction: column; gap: 18px; }
 .feed-card { border: 1px solid rgba(var(--overlay-rgb), 0.10); border-radius: 14px; overflow: hidden; background: rgba(var(--overlay-rgb), 0.03); }
