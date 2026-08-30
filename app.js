@@ -3794,7 +3794,7 @@ if (ctxPie) {
 				}
 			}
 
-			const avatarMap = await fetchAvatarMap(data.map(u => u.user_id));
+			const avatarMap = await fetchAvatarMap(data.map(u => u.user_id).filter(id => id !== currentUser.id));
 
 			list.innerHTML = data.map((u, i) => {
 				const rankStr = i < 3 ? ['🥇','🥈','🥉'][i] : `#${i+1}`;
@@ -3811,7 +3811,7 @@ if (ctxPie) {
 					u.username, 30);
 
 				return `
-					<div class="lb-item" onclick="viewFriendStats('${u.user_id}', '${escapeHtml(u.username)}')"
+					<div class="lb-item" onclick="viewFriendStats('${u.user_id}')"
 						 style="${isMe ? 'background: rgba(76, 175, 80, 0.1);' : ''}">
 						<div style="display: flex; align-items: center; gap: 8px;">
 							<span class="lb-rank ${rankClass}">${rankStr}</span>
@@ -3863,7 +3863,7 @@ if (ctxPie) {
 				const rankClass = i < 3 ? 'top3' : '';
 
 				return `
-					<div class="lb-item" onclick="viewFriendStats('${u.friend_id}', '${escapeHtml(u.username)}')">
+					<div class="lb-item" onclick="viewFriendStats('${u.friend_id}')">
 						<div style="display: flex; align-items: center; gap: 8px;">
 							<span class="lb-rank ${rankClass}">${rankStr}</span>
 							${avatarMarkup(avatarMap.get(u.friend_id), u.username, 30)}
@@ -3940,20 +3940,17 @@ if (ctxPie) {
 
 	let currentModalFriendId = null;
 
-	async function viewFriendStats(targetId, username) {
+	async function viewFriendStats(targetId) {
 		const { data, error } = await supabaseClient.rpc('get_friend_stats', { target_user_id: targetId });
 
 		if (error || !data || data.length === 0) return alert(t('social.unableToLoadStats'));
 
-		document.getElementById('modalFriendName').innerText = t('social.statsOf', { username });
-
-		const { data: prof } = await supabaseClient
-			.from('profiles_public').select('avatar_url').eq('id', targetId).maybeSingle();
-		const avEl = document.getElementById('modalFriendAvatar');
-		if (avEl) avEl.innerHTML = avatarMarkup(prof && prof.avatar_url, username, 40);
-
+		// Numeri + apertura modal subito: non aspettano la query avatar/username.
 		document.getElementById('modaleFumo').innerText = data[0].fumo_g.toFixed(1);
 		document.getElementById('modaleErba').innerText = data[0].erba_g.toFixed(1);
+		document.getElementById('modalFriendName').innerText = t('social.stats');
+		const avEl = document.getElementById('modalFriendAvatar');
+		if (avEl) avEl.innerHTML = '';
 
 		const { data: shared } = await supabaseClient.rpc('get_shared_stats', { target_user_id: targetId });
 		const sharedEl = document.getElementById('modaleShared');
@@ -3968,6 +3965,13 @@ if (ctxPie) {
 		if (removeBtn) removeBtn.style.display = (currentSocialTab === 'friends') ? 'block' : 'none';
 
 		document.getElementById('friendModal').style.display = 'flex';
+
+		// Username preso dalla stessa query dell'avatar (mai dall'handler inline).
+		const { data: prof } = await supabaseClient
+			.from('profiles_public').select('avatar_url, username').eq('id', targetId).maybeSingle();
+		const uname = (prof && prof.username) || '';
+		document.getElementById('modalFriendName').innerText = t('social.statsOf', { username: uname });
+		if (avEl) avEl.innerHTML = avatarMarkup(prof && prof.avatar_url, uname, 40);
 	}
 
 	async function removeFriendFromModal() {
