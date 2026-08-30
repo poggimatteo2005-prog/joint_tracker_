@@ -619,7 +619,10 @@
 <!-- MODAL STATISTICHE AMICO -->
 <div id="friendModal" class="modal" style="display:none;">
 	<div class="modal-content card">
-		<h3 id="modalFriendName" data-i18n="social.stats">Statistiche</h3>
+		<div style="display:flex; align-items:center; gap:10px;">
+			<span id="modalFriendAvatar"></span>
+			<h3 id="modalFriendName" data-i18n="social.stats" style="margin:0;">Statistiche</h3>
+		</div>
 		<div class="stat-grid" style="margin-bottom: 20px;">
 			<div class="stat-box"><big id="modaleFumo">0</big><small data-i18n="social.gSmoke">g Fumo</small></div>
 			<div class="stat-box"><big id="modaleErba">0</big><small data-i18n="social.gWeed">g Erba</small></div>
@@ -627,6 +630,23 @@
 		<p id="modaleShared" style="text-align:center; font-size:13px; color:var(--color-text-muted); margin-top:-8px; margin-bottom:15px;"></p>
 		<button class="secondary-btn" onclick="closeFriendModal()" data-i18n="social.close">Chiudi</button>
 		<button class="action-btn" id="btnRemoveFriendModal" onclick="removeFriendFromModal()" style="width:100%; margin-top:8px; display:none; background:var(--danger); color:white;" data-i18n="social.removeFriendship">🗑️ Rimuovi amicizia</button>
+	</div>
+</div>
+
+<!-- MODAL RITAGLIO AVATAR -->
+<div id="avatarCropModal" class="modal" style="display:none;">
+	<div class="modal-content card">
+		<h3 data-i18n="settings.avatarCropTitle">Ritaglia l'avatar</h3>
+		<div class="avatar-crop-viewport" id="avatarCropViewport">
+			<img class="avatar-crop-img" id="avatarCropImg" alt="" draggable="false">
+		</div>
+		<label class="avatar-crop-zoom-label" for="avatarCropZoom" data-i18n="settings.avatarCropZoom">Zoom</label>
+		<input type="range" id="avatarCropZoom" class="avatar-crop-zoom" min="1" max="4" step="0.01" value="1">
+		<p id="avatarCropError" class="avatar-error" style="display:none;"></p>
+		<div class="avatar-crop-actions">
+			<button type="button" class="secondary-btn" onclick="closeAvatarCrop()" data-i18n="settings.avatarCropCancel">Annulla</button>
+			<button type="button" class="action-btn" id="avatarCropConfirmBtn" onclick="confirmAvatarCrop()" data-i18n="settings.avatarCropConfirm">Conferma</button>
+		</div>
 	</div>
 </div>
 
@@ -772,12 +792,39 @@
 <div id="page-settings" class="page">
 	<div class="card" id="profileCard">
 		<h3 data-i18n="settings.profile">👤 Profilo</h3>
-		<p style="font-size:12px; color:var(--color-text-muted); margin-top:-8px;"><span data-i18n="settings.loggedInAs">Loggato come</span> <strong id="settingsEmailDisplay">...</strong></p>
-		<p><span data-i18n="settings.currentNickname">Il tuo nickname attuale:</span> <strong id="currentUsernameDisplay" style="color: var(--primary);">...</strong></p>
 
-		<label for="usernameInput" data-i18n="settings.changeNickname">Cambia Nickname</label>
-		<input type="text" id="usernameInput" data-i18n-placeholder="settings.newNicknamePlaceholder" placeholder="Nuovo nickname">
-		<button class="action-btn" onclick="updateProfile()" data-i18n="settings.updateName">Aggiorna Nome</button>
+		<div class="avatar-settings">
+			<div class="avatar-settings-row">
+				<span id="avatarPreview"></span>
+				<button type="button" class="secondary-btn avatar-remove-btn" id="avatarRemoveBtn" onclick="removeAvatar()" data-i18n="settings.avatarRemove" style="display:none;">Rimuovi</button>
+			</div>
+
+			<div class="avatar-mode-tabs">
+				<button type="button" id="avatarModeUpload" class="avatar-mode-tab active" onclick="setAvatarMode('upload')" data-i18n="settings.avatarUploadMode">Carica foto</button>
+				<button type="button" id="avatarModePreset" class="avatar-mode-tab" onclick="setAvatarMode('preset')" data-i18n="settings.avatarPresetMode">Scegli icona</button>
+			</div>
+
+			<div id="avatarUploadPane" class="avatar-pane">
+				<p id="avatarGuestHint" style="display:none; font-size:12px; color:var(--color-text-muted); margin:6px 0 0;" data-i18n="settings.avatarGuestHint">Crea un account per caricare una tua foto.</p>
+				<button type="button" class="action-btn" id="avatarChooseBtn" onclick="document.getElementById('avatarFileInput').click()" data-i18n="settings.avatarChooseImage">Scegli immagine</button>
+				<input type="file" id="avatarFileInput" accept="image/jpeg,image/png,image/webp" hidden onchange="handleAvatarFileSelected(event)">
+			</div>
+
+			<div id="avatarPresetPane" class="avatar-pane" style="display:none;">
+				<div class="avatar-preset-grid" id="avatarPresetGrid"></div>
+			</div>
+
+			<p id="avatarError" class="avatar-error" style="display:none;"></p>
+		</div>
+
+		<div id="profileIdentityBlock">
+			<p style="font-size:12px; color:var(--color-text-muted); margin-top:-8px;"><span data-i18n="settings.loggedInAs">Loggato come</span> <strong id="settingsEmailDisplay">...</strong></p>
+			<p><span data-i18n="settings.currentNickname">Il tuo nickname attuale:</span> <strong id="currentUsernameDisplay" style="color: var(--primary);">...</strong></p>
+
+			<label for="usernameInput" data-i18n="settings.changeNickname">Cambia Nickname</label>
+			<input type="text" id="usernameInput" data-i18n-placeholder="settings.newNicknamePlaceholder" placeholder="Nuovo nickname">
+			<button class="action-btn" onclick="updateProfile()" data-i18n="settings.updateName">Aggiorna Nome</button>
+		</div>
 	</div>
 
 	<div class="card" id="guestConvertCard" style="display:none; background:linear-gradient(135deg, rgba(106,27,154,0.1), rgba(74,20,140,0.1)); border:1px solid rgba(106,27,154,0.3);">

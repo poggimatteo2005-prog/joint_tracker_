@@ -13,7 +13,11 @@
 	let currentSocialTab = 'global';
 	let charts = {};
 	let userPlaces = []; // Array per i posti caricati dal DB
-	let sessionParticipants = []; // { user_id, username }
+	let sessionParticipants = []; // { user_id, username, avatar_url }
+	// Cache dell'ultima lista amici resa dalla quick-list: quickAddParticipant()
+	// la consulta per id invece di ricevere username/avatar_url in un onclick inline
+	// (pattern user-string-in-onclick evitato — vedi Task 8).
+	let friendsQuickCache = [];
 	let isLocatingNow = false;
 	let isOnline = navigator.onLine;
 	let notifications = [];
@@ -24,9 +28,10 @@
 	const VAPID_PUBLIC_KEY = 'BE2yG7kWhMrni1qk-uilMqHc7uGL92CZE6UaLt-sbTTHsDr4lDP6qiqnSJsxachx5kUJ7C-0dO46UeSjxOUwiG0';
 	let userReminderSettings = { reminder_enabled: true, reminder_time: '20:00:00' };
 	let unlockedAchievements = [];
-let friendsCountCache = 0;
-let achievementsLoaded = false;
-let isGuestMode = false;
+	let currentUserProfile = null; // { username, avatar_url } — popolato da loadUserProfile()
+	let friendsCountCache = 0;
+	let achievementsLoaded = false;
+	let isGuestMode = false;
 
 // ========== TEMA (chiaro/scuro/automatico) ==========
 function getStoredThemePref() {
@@ -207,7 +212,7 @@ async function getMyFriendsList() {
 
     const { data: profilesData, error: profilesError } = await supabaseClient
         .from('profiles_public')
-        .select('id, username')
+        .select('id, username, avatar_url')
         .in('id', friendIds);
 
     if (profilesError) {
@@ -236,17 +241,20 @@ async function renderFriendsQuickList() {
         return;
     }
 
+    friendsQuickCache = friends;
     el.innerHTML = friends.map(f => `
-        <button type="button" onclick="quickAddParticipant('${f.id}','${f.username}')"
-            style="background:rgba(76,175,80,0.12); border:1px solid rgba(76,175,80,0.3); color:var(--heading); border-radius:20px; padding:6px 12px; font-size:13px; cursor:pointer;">
-            + ${f.username}
-        </button>
+		<button type="button" onclick="quickAddParticipant('${f.id}')" class="friend-quick-btn">
+			${avatarMarkup(f.avatar_url, f.username, 22)}
+			<span>+ ${escapeHtml(f.username)}</span>
+		</button>
     `).join('');
 }
 
-function quickAddParticipant(id, username) {
+function quickAddParticipant(id) {
     if (sessionParticipants.some(p => p.user_id === id)) return;
-    sessionParticipants.push({ user_id: id, username });
+    const friend = friendsQuickCache.find(f => f.id === id);
+    if (!friend) return;
+    sessionParticipants.push({ user_id: id, username: friend.username, avatar_url: friend.avatar_url || null });
     renderParticipantChips();
 }
 
@@ -257,7 +265,7 @@ async function searchParticipant() {
 
     const { data, error } = await supabaseClient
         .from('profiles_public')
-        .select('id, username')
+        .select('id, username, avatar_url')
         .ilike('username', query)
         .neq('id', currentUser.id);
 
@@ -271,7 +279,7 @@ async function searchParticipant() {
         return alert(t('shared.alreadyAdded'));
     }
 
-    sessionParticipants.push({ user_id: match.id, username: match.username });
+    sessionParticipants.push({ user_id: match.id, username: match.username, avatar_url: match.avatar_url || null });
     input.value = "";
     renderParticipantChips();
 }
@@ -285,7 +293,7 @@ function renderParticipantChips() {
     const el = document.getElementById('participantChips');
     if (!el) return;
     el.innerHTML = sessionParticipants.map(p => `
-        <span class="participant-chip">👤 ${p.username} <button onclick="removeParticipant('${p.user_id}')">✕</button></span>
+		<span class="participant-chip">${avatarMarkup(p.avatar_url, p.username, 18)} ${escapeHtml(p.username)} <button onclick="removeParticipant('${p.user_id}')">✕</button></span>
     `).join('');
     renderContributorsPanel();
 }
@@ -297,7 +305,7 @@ function renderContributorsPanel() {
 
     const hasFumo = document.getElementById("fumo").checked;
     const hasErba = document.getElementById("erba").checked;
-    const all = [{ user_id: currentUser.id, username: t('shared.you') }, ...sessionParticipants];
+    const all = [{ user_id: currentUser.id, username: t('shared.you'), avatar_url: (currentUserProfile && currentUserProfile.avatar_url) || null }, ...sessionParticipants];
 
     let fumoTotal = 0, erbaTotal = 0;
     if (hasFumo && hasErba) {
@@ -325,7 +333,7 @@ function renderContributorsPanel() {
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px; font-weight:normal; flex:1; margin-top:0;">
                     <input type="checkbox" class="contrib-fumo" value="${p.user_id}"
                         ${activeIds.includes(p.user_id) ? 'checked' : ''}
-                        onchange="renderContributorsPanel()" style="width:auto;"> ${p.username}
+                        onchange="renderContributorsPanel()" style="width:auto;"> ${avatarMarkup(p.avatar_url, p.username, 18)} ${escapeHtml(p.username)}
                 </label>
                 <input type="number" step="0.01" min="0" class="contrib-fumo-amt" data-user="${p.user_id}"
                     value="${activeIds.includes(p.user_id) ? share : '0.00'}"
@@ -346,7 +354,7 @@ function renderContributorsPanel() {
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px; font-weight:normal; flex:1; margin-top:0;">
                     <input type="checkbox" class="contrib-erba" value="${p.user_id}"
                         ${activeIds.includes(p.user_id) ? 'checked' : ''}
-                        onchange="renderContributorsPanel()" style="width:auto;"> ${p.username}
+                        onchange="renderContributorsPanel()" style="width:auto;"> ${avatarMarkup(p.avatar_url, p.username, 18)} ${escapeHtml(p.username)}
                 </label>
                 <input type="number" step="0.01" min="0" class="contrib-erba-amt" data-user="${p.user_id}"
                     value="${activeIds.includes(p.user_id) ? share : '0.00'}"
@@ -382,6 +390,7 @@ document.getElementById("customGrams").addEventListener('input', updateDivideMes
 			if (hadGuestData) {
 				await migrateGuestDataToAccount(currentUser.id);
 			}
+			await migrateGuestAvatar(currentUser.id);
 		} else if (isGuestModeStored()) {
 			// Rientra in guest mode senza ri-tracciare l'evento: è già stato tracciato
 			// la prima volta che l'utente ha premuto "Prova senza registrarti".
@@ -591,6 +600,7 @@ if (mode === 'signup') {
 			if (wasGuestWithData) {
 				await migrateGuestDataToAccount(currentUser.id);
 			}
+			await migrateGuestAvatar(currentUser.id);
 			showMessage(t('auth.welcome'));
 		} catch (err) {
 			showError(err.message);
@@ -623,6 +633,7 @@ if (mode === 'signup') {
 			renderAchievements();
 			getLocationAuto();
 			await loadPurchases();
+			renderAvatarSettings();
 			return;
 		}
 
@@ -640,7 +651,12 @@ if (mode === 'signup') {
 		loadAchievements(),
 		loadBreaks(),
 		loadGoal(),
-		checkOnboarding()
+		checkOnboarding(),
+		// popola currentUserProfile (username + avatar_url) subito: la propria
+		// riga in leaderboard/contributori usa currentUserProfile?.avatar_url,
+		// altrimenti mancava finché non si apriva Impostazioni (unico altro
+		// chiamante). Scrive anche il DOM Impostazioni (sempre presente, nascosto).
+		loadUserProfile()
 	]);
 	}
 
@@ -791,7 +807,8 @@ async function flushPendingSessions() {
 		setVisible('photoFeature', !isGuestMode);
 		setVisible('photoLocked', isGuestMode);
 
-		setVisible('profileCard', !isGuestMode);
+		setVisible('profileCard', true);                 // sempre visibile: i guest ci scelgono un preset
+		setVisible('profileIdentityBlock', !isGuestMode); // email + nickname solo per account registrati
 		setVisible('guestConvertCard', isGuestMode);
 		setVisible('remindersPushCard', !isGuestMode);
 		setVisible('remindersPushLocked', isGuestMode);
@@ -1986,6 +2003,494 @@ async function checkOnboarding() {
 	}
 }
 
+// ========== AVATAR ==========
+// profiles.avatar_url può essere: una URL http(s) (foto caricata), un sentinel
+// "preset:<key>", oppure null. avatarMarkup() è l'UNICO punto che interpreta il
+// campo — ogni superficie che mostra un utente passa di qui. Vedi
+// docs/superpowers/specs/2026-08-30-avatar-utente-design.md §3.
+
+const PRESET_AVATARS = {
+	leaf: '🍃', herb: '🌿', sprout: '🌱', evergreen: '🌲',
+	sun: '☀️', moon: '🌙', fire: '🔥', sparkle: '✨',
+};
+const PRESET_KEYS = Object.keys(PRESET_AVATARS);
+
+// Solo un file sotto questo prefisso (bucket pubblico "avatars") è reso come <img>.
+// Qualsiasi altra URL in avatar_url degrada all'iniziale — impedisce che un valore
+// manomesso (RLS permette a un utente di scrivere stringhe arbitrarie sulla propria
+// riga profiles) diventi un <img src> remoto nella leaderboard di tutti gli altri.
+// Vincolato anche lato DB dal CHECK profiles_avatar_url_shape.
+const AVATAR_URL_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/avatars/`;
+
+function presetEmoji(key) {
+	return Object.prototype.hasOwnProperty.call(PRESET_AVATARS, key) ? PRESET_AVATARS[key] : null;
+}
+
+// Hash deterministico (djb2) -> tinta stabile per l'iniziale di fallback.
+// S/L fissi scelti per reggere sia tema chiaro che scuro con testo bianco.
+function hslFromHash(str) {
+	let h = 5381;
+	const s = String(str || '?');
+	for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+	return `hsl(${Math.abs(h) % 360} 45% 45%)`;
+}
+
+// Ritorna markup HTML per un avatar. `username` serve solo per l'iniziale e l'alt.
+function avatarMarkup(avatarUrl, username, sizePx = 32) {
+	const name = String(username || '?');
+	const initial = escapeHtml(name.trim().slice(0, 1).toUpperCase() || '?');
+	const px = Math.round(sizePx);
+	const fontPx = Math.round(px * 0.44);
+	const dims = `width:${px}px;height:${px}px;`;
+
+	if (typeof avatarUrl === 'string' && avatarUrl.startsWith('preset:')) {
+		const emoji = presetEmoji(avatarUrl.slice(7));
+		if (emoji) {
+			return `<span class="avatar avatar-preset" style="${dims}font-size:${Math.round(px * 0.55)}px;" aria-hidden="true">${emoji}</span>`;
+		}
+		// key ignota -> degrada a iniziale
+	} else if (typeof avatarUrl === 'string' && avatarUrl.startsWith(AVATAR_URL_PREFIX)) {
+		return `<img class="avatar" src="${escapeHtml(avatarUrl)}" alt="" `
+			+ `width="${px}" height="${px}" loading="lazy" referrerpolicy="no-referrer" `
+			+ `data-initial="${initial}" data-hue="${escapeHtml(hslFromHash(name))}" `
+			+ `onerror="avatarImgFallback(this)">`;
+	}
+
+	return `<span class="avatar avatar-fallback" style="${dims}font-size:${fontPx}px;background:${hslFromHash(name)};">${initial}</span>`;
+}
+
+// Sostituisce un <img> avatar rotto (file 404) con l'iniziale colorata,
+// senza rifare query (initial/hue sono nei data-attr). Stesso pattern di fallbackPlainPhoto.
+function avatarImgFallback(img) {
+	if (img.dataset.fallbackDone) return;
+	img.dataset.fallbackDone = '1';
+	const span = document.createElement('span');
+	span.className = 'avatar avatar-fallback';
+	span.style.cssText = `width:${img.width}px;height:${img.height}px;font-size:${Math.round(img.width * 0.44)}px;background:${img.dataset.hue || 'hsl(140 45% 45%)'};`;
+	span.textContent = img.dataset.initial || '?';
+	img.replaceWith(span);
+}
+
+// --- stato/preferenza avatar guest (solo preset) ---
+const GUEST_AVATAR_KEY = 'jt_guest_avatar';
+function getGuestAvatar() {
+	try {
+		const v = localStorage.getItem(GUEST_AVATAR_KEY);
+		return v && v.startsWith('preset:') ? v : null;
+	} catch (e) { return null; }
+}
+function setGuestAvatar(val) { try { localStorage.setItem(GUEST_AVATAR_KEY, val); } catch (e) {} }
+function clearGuestAvatar() { try { localStorage.removeItem(GUEST_AVATAR_KEY); } catch (e) {} }
+
+// Migra il preset avatar da localStorage al profilo dell'utente. Chiamata
+// a ogni ingresso in un account (login/signup), indipendentemente dal fatto
+// che ci fossero smokes/purchases guest da migrare.
+async function migrateGuestAvatar(userId) {
+	const val = getGuestAvatar();
+	if (!val) return;
+	try {
+		const { error } = await supabaseClient.from('profiles').upsert({ id: userId, avatar_url: val });
+		if (error) throw error;
+		// logout -> preset da guest -> login: un file avatar caricato in una
+		// sessione precedente resterebbe orfano ora che avatar_url è un preset.
+		// currentUser è impostato qui, quindi il guard di removeUploadedAvatarFiles passa.
+		await removeUploadedAvatarFiles();
+		clearGuestAvatar();
+		if (currentUserProfile) currentUserProfile.avatar_url = val;
+	} catch (e) {
+		console.error('migrateGuestAvatar:', e); // i dati guest restano, si riprova al prossimo login
+	}
+}
+
+function currentAvatarValue() {
+	return isGuestMode ? getGuestAvatar() : (currentUserProfile && currentUserProfile.avatar_url) || null;
+}
+
+let avatarMode = 'upload'; // 'upload' | 'preset'
+// True appena l'utente tocca una tab avatar in Impostazioni: blocca l'auto-switch
+// a "Scegli icona" di renderAvatarSettings (vedi lì). I due bottoni tab sono gli
+// unici chiamanti di setAvatarMode, quindi ogni chiamata è una scelta manuale.
+let avatarModeUserPicked = false;
+function setAvatarMode(mode) {
+	avatarModeUserPicked = true;
+	avatarMode = mode;
+	document.getElementById('avatarModeUpload').classList.toggle('active', mode === 'upload');
+	document.getElementById('avatarModePreset').classList.toggle('active', mode === 'preset');
+	document.getElementById('avatarUploadPane').style.display = mode === 'upload' ? '' : 'none';
+	document.getElementById('avatarPresetPane').style.display = mode === 'preset' ? '' : 'none';
+	clearAvatarError();
+}
+
+function clearAvatarError() {
+	const el = document.getElementById('avatarError');
+	if (el) { el.style.display = 'none'; el.textContent = ''; }
+}
+function showAvatarError(msg) {
+	const el = document.getElementById('avatarError');
+	if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+function renderAvatarSettings() {
+	const preview = document.getElementById('avatarPreview');
+	if (!preview) return;
+	const val = currentAvatarValue();
+
+	// Se l'avatar corrente è un preset, mostra il pannello "Scegli icona" così il
+	// preset attivo è visibile — ma solo finché l'utente non ha scelto una tab a mano.
+	if (!avatarModeUserPicked && typeof val === 'string' && val.startsWith('preset:') && avatarMode !== 'preset') {
+		setAvatarMode('preset');
+	}
+
+	const name = (currentUserProfile && currentUserProfile.username) || (currentUser && currentUser.email) || '?';
+	preview.innerHTML = avatarMarkup(val, name, 72);
+
+	document.getElementById('avatarRemoveBtn').style.display = val ? '' : 'none';
+
+	// guest: niente upload
+	const guest = isGuestMode;
+	document.getElementById('avatarGuestHint').style.display = guest ? 'block' : 'none';
+	document.getElementById('avatarChooseBtn').style.display = guest ? 'none' : '';
+
+	// griglia preset
+	const grid = document.getElementById('avatarPresetGrid');
+	grid.innerHTML = PRESET_KEYS.map(key => {
+		const selected = val === `preset:${key}`;
+		return `<button type="button" class="avatar-preset-cell${selected ? ' is-selected' : ''}" `
+			+ `data-preset-key="${key}" onclick="selectPresetAvatar('${key}')" aria-pressed="${selected}">`
+			+ `${PRESET_AVATARS[key]}</button>`;
+	}).join('');
+}
+
+async function selectPresetAvatar(key) {
+	if (!PRESET_KEYS.includes(key)) return;
+	clearAvatarError();
+	const value = `preset:${key}`;
+
+	if (isGuestMode) {
+		setGuestAvatar(value);
+		renderAvatarSettings();
+		return;
+	}
+
+	try {
+		// upsert PRIMA: se fallisce, il file avatar esistente resta intatto (spec §10).
+		const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: value });
+		if (error) throw error;
+		await removeUploadedAvatarFiles(); // solo dopo il successo: non lasciare orfana la vecchia foto
+		currentUserProfile = { ...(currentUserProfile || {}), avatar_url: value };
+		renderAvatarSettings();
+		refreshMountedAvatars();
+		showMessage(t('settings.avatarUpdated'));
+	} catch (e) {
+		console.error('selectPresetAvatar:', e);
+		showAvatarError(t('settings.avatarUploadError'));
+	}
+}
+
+async function removeAvatar() {
+	clearAvatarError();
+	if (isGuestMode) {
+		clearGuestAvatar();
+		renderAvatarSettings();
+		return;
+	}
+	try {
+		// upsert PRIMA: se fallisce, il file avatar esistente resta intatto (spec §10).
+		const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: null });
+		if (error) throw error;
+		await removeUploadedAvatarFiles(); // solo dopo il successo
+		currentUserProfile = { ...(currentUserProfile || {}), avatar_url: null };
+		renderAvatarSettings();
+		refreshMountedAvatars();
+		showMessage(t('settings.avatarRemoved'));
+	} catch (e) {
+		console.error('removeAvatar:', e);
+		showAvatarError(t('settings.avatarUploadError'));
+	}
+}
+
+// Ridisegna le superfici avatar attualmente montate nel DOM dopo un cambio.
+// Le pagine non montate si aggiornano al loro prossimo load.
+function refreshMountedAvatars() {
+	// Solo la leaderboard, e solo se è la pagina attiva (spec §5.3: le altre
+	// superfici si aggiornano al prossimo caricamento). loadFeed() NON va chiamato
+	// qui: resetta comments/commentsOpen (chiude i thread aperti) e fa un
+	// get_snapshot_feed + createSignedUrls per ogni click preset.
+	if (document.getElementById('page-social')?.classList.contains('active')) {
+		if (typeof loadSocial === 'function') loadSocial();
+	}
+}
+
+// --- crop interattivo (pan + zoom), vanilla ---
+const AVATAR_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const AVATAR_MAX_BYTES = 10 * 1024 * 1024;
+const AVATAR_OUT_SIZE = 256;
+
+let avatarCrop = null;
+
+function handleAvatarFileSelected(event) {
+	const input = event.target;
+	const file = input.files && input.files[0];
+	if (!file) return;
+	clearAvatarError();
+
+	if (!AVATAR_ACCEPTED_TYPES.includes(file.type)) {
+		showAvatarError(t('settings.avatarFormatError'));
+		input.value = '';
+		return;
+	}
+	if (file.size > AVATAR_MAX_BYTES) {
+		showAvatarError(t('settings.avatarTooLarge'));
+		input.value = '';
+		return;
+	}
+
+	const url = URL.createObjectURL(file);
+	const img = new Image();
+	img.onload = () => { openAvatarCrop(img, url); };
+	img.onerror = () => {
+		URL.revokeObjectURL(url);
+		showAvatarError(t('settings.avatarFormatError'));
+		input.value = '';
+	};
+	img.src = url;
+}
+
+function openAvatarCrop(img, objectUrl) {
+	// Un file precedente selezionato senza chiudere il modal lascerebbe orfano il suo objectUrl.
+	if (avatarCrop && avatarCrop.objectUrl) URL.revokeObjectURL(avatarCrop.objectUrl);
+
+	const viewport = document.getElementById('avatarCropViewport');
+	const imgEl = document.getElementById('avatarCropImg');
+
+	// Mostrare il modal PRIMA di misurare: da display:none il viewport ha
+	// clientWidth 0 -> minScale 0 -> transform NaN.
+	document.getElementById('avatarCropError').style.display = 'none';
+	document.getElementById('avatarCropConfirmBtn').disabled = false;
+	document.getElementById('avatarCropModal').style.display = 'flex';
+
+	const V = viewport.clientWidth; // viewport quadrato: clientWidth === clientHeight (CSS)
+
+	const natW = img.naturalWidth;
+	const natH = img.naturalHeight;
+	const minScale = V / Math.min(natW, natH);
+
+	imgEl.src = objectUrl;
+	imgEl.style.width = natW + 'px';
+	imgEl.style.height = natH + 'px';
+
+	avatarCrop = {
+		objectUrl, natW, natH, V,
+		minScale, scale: minScale,
+		tx: (V - natW * minScale) / 2,
+		ty: (V - natH * minScale) / 2,
+		pointers: new Map(),
+		pinchStartDist: 0, pinchStartScale: 0,
+	};
+	clampAvatarCrop();
+	applyAvatarCropTransform();
+
+	const zoom = document.getElementById('avatarCropZoom');
+	zoom.min = '1'; zoom.max = '4'; zoom.value = '1';
+}
+
+function closeAvatarCrop() {
+	if (avatarCrop && avatarCrop.objectUrl) URL.revokeObjectURL(avatarCrop.objectUrl);
+	avatarCrop = null;
+	document.getElementById('avatarCropModal').style.display = 'none';
+	const input = document.getElementById('avatarFileInput');
+	if (input) input.value = '';
+}
+
+// Vincola scale >= minScale e tx/ty in modo che l'immagine copra sempre il viewport.
+function clampAvatarCrop() {
+	const c = avatarCrop;
+	if (c.scale < c.minScale) c.scale = c.minScale;
+	const dispW = c.natW * c.scale;
+	const dispH = c.natH * c.scale;
+	c.tx = Math.min(0, Math.max(c.V - dispW, c.tx));
+	c.ty = Math.min(0, Math.max(c.V - dispH, c.ty));
+}
+
+function applyAvatarCropTransform() {
+	const c = avatarCrop;
+	const imgEl = document.getElementById('avatarCropImg');
+	imgEl.style.transform = `translate(${c.tx}px, ${c.ty}px) scale(${c.scale})`;
+	// sync slider (scale relativo a minScale, range 1..4)
+	const zoom = document.getElementById('avatarCropZoom');
+	const rel = c.scale / c.minScale;
+	if (Math.abs(parseFloat(zoom.value) - rel) > 0.01) zoom.value = String(Math.min(4, Math.max(1, rel)));
+}
+
+// Zoom mantenendo ancorato il punto immagine sotto (px, py) in coord viewport.
+function zoomAvatarCropAround(newScale, px, py) {
+	const c = avatarCrop;
+	newScale = Math.min(c.minScale * 4, Math.max(c.minScale, newScale));
+	const ix = (px - c.tx) / c.scale;
+	const iy = (py - c.ty) / c.scale;
+	c.scale = newScale;
+	c.tx = px - ix * newScale;
+	c.ty = py - iy * newScale;
+	clampAvatarCrop();
+	applyAvatarCropTransform();
+}
+
+function initAvatarCropInteractions() {
+	const viewport = document.getElementById('avatarCropViewport');
+	if (!viewport || viewport.dataset.wired) return;
+	viewport.dataset.wired = '1';
+
+	viewport.addEventListener('pointerdown', e => {
+		if (!avatarCrop) return;
+		viewport.setPointerCapture(e.pointerId);
+		viewport.classList.add('is-grabbing');
+		avatarCrop.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		if (avatarCrop.pointers.size === 2) {
+			const pts = [...avatarCrop.pointers.values()];
+			avatarCrop.pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+			avatarCrop.pinchStartScale = avatarCrop.scale;
+		}
+	});
+
+	viewport.addEventListener('pointermove', e => {
+		if (!avatarCrop || !avatarCrop.pointers.has(e.pointerId)) return;
+		const prev = avatarCrop.pointers.get(e.pointerId);
+		const cur = { x: e.clientX, y: e.clientY };
+		avatarCrop.pointers.set(e.pointerId, cur);
+
+		if (avatarCrop.pointers.size === 1) {
+			avatarCrop.tx += cur.x - prev.x;
+			avatarCrop.ty += cur.y - prev.y;
+			clampAvatarCrop();
+			applyAvatarCropTransform();
+		} else if (avatarCrop.pointers.size === 2) {
+			const pts = [...avatarCrop.pointers.values()];
+			const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+			if (avatarCrop.pinchStartDist > 0) {
+				const rect = document.getElementById('avatarCropViewport').getBoundingClientRect();
+				const midX = (pts[0].x + pts[1].x) / 2 - rect.left;
+				const midY = (pts[0].y + pts[1].y) / 2 - rect.top;
+				zoomAvatarCropAround(avatarCrop.pinchStartScale * (dist / avatarCrop.pinchStartDist), midX, midY);
+			}
+		}
+	});
+
+	const endPointer = e => {
+		if (!avatarCrop) return;
+		avatarCrop.pointers.delete(e.pointerId);
+		if (avatarCrop.pointers.size < 2) avatarCrop.pinchStartDist = 0;
+		if (avatarCrop.pointers.size === 0) viewport.classList.remove('is-grabbing');
+	};
+	viewport.addEventListener('pointerup', endPointer);
+	viewport.addEventListener('pointercancel', endPointer);
+
+	document.getElementById('avatarCropZoom').addEventListener('input', e => {
+		if (!avatarCrop) return;
+		const rel = parseFloat(e.target.value) || 1;
+		const c = avatarCrop;
+		zoomAvatarCropAround(c.minScale * rel, c.V / 2, c.V / 2);
+	});
+}
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', initAvatarCropInteractions);
+} else {
+	initAvatarCropInteractions();
+}
+
+async function exportCroppedAvatar() {
+	const c = avatarCrop;
+	const img = document.getElementById('avatarCropImg');
+	// regione visibile in coordinate immagine-naturali
+	const sSize = c.V / c.scale;
+	const sx = -c.tx / c.scale;
+	const sy = -c.ty / c.scale;
+
+	const canvas = document.createElement('canvas');
+	canvas.width = AVATAR_OUT_SIZE;
+	canvas.height = AVATAR_OUT_SIZE;
+	const ctx = canvas.getContext('2d');
+	ctx.imageSmoothingQuality = 'high';
+	ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, AVATAR_OUT_SIZE, AVATAR_OUT_SIZE);
+
+	const toBlob = (type, q) => new Promise(res => canvas.toBlob(res, type, q));
+	let blob = await toBlob('image/webp', 0.85);
+	let ext = 'webp';
+	if (!blob) { blob = await toBlob('image/jpeg', 0.85); ext = 'jpg'; }
+	if (!blob) throw new Error('toBlob returned null');
+	return { blob, ext };
+}
+
+async function confirmAvatarCrop() {
+	const btn = document.getElementById('avatarCropConfirmBtn');
+	const errEl = document.getElementById('avatarCropError');
+	errEl.style.display = 'none';
+	btn.disabled = true;
+	setAvatarPreviewLoading(true);
+	try {
+		const out = await exportCroppedAvatar();
+		await uploadAvatarBlob(out); // Task 6
+		closeAvatarCrop();
+		showMessage(t('settings.avatarUpdated'));
+	} catch (e) {
+		console.error('confirmAvatarCrop:', e);
+		errEl.textContent = t('settings.avatarUploadError');
+		errEl.style.display = 'block';
+		btn.disabled = false;
+	} finally {
+		setAvatarPreviewLoading(false);
+		renderAvatarSettings(); // ripristina preview (avatar corrente invariato in caso d'errore)
+	}
+}
+
+function setAvatarPreviewLoading(on) {
+	const preview = document.getElementById('avatarPreview');
+	if (preview) preview.classList.toggle('avatar-loading', !!on);
+}
+
+// --- upload / cleanup Storage ---
+const AVATARS_BUCKET = 'avatars';
+
+async function removeUploadedAvatarFiles() {
+	if (isGuestMode || !currentUser) return;
+	try {
+		await supabaseClient.storage.from(AVATARS_BUCKET).remove([
+			`${currentUser.id}/avatar.webp`,
+			`${currentUser.id}/avatar.jpg`,
+		]);
+	} catch (e) { /* best-effort: il file può non esistere */ }
+}
+
+async function uploadAvatarBlob({ blob, ext }) {
+	if (isGuestMode || !currentUser) throw new Error('upload avatar non disponibile in guest');
+	const path = `${currentUser.id}/avatar.${ext}`;
+	const otherPath = `${currentUser.id}/avatar.${ext === 'webp' ? 'jpg' : 'webp'}`;
+	const contentType = ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+	// Ordine: upload -> upsert profiles -> pulizia dell'ALTRA estensione.
+	// Qualsiasi errore prima della pulizia -> throw, niente cancellato: un
+	// avatar funzionante resta intatto (spec §10). upsert:true sovrascrive
+	// il file con lo stesso nome; non si tocca mai il nome appena scritto.
+	const up = await supabaseClient.storage.from(AVATARS_BUCKET)
+		.upload(path, blob, { upsert: true, contentType });
+	if (up.error) throw up.error;
+
+	const pub = supabaseClient.storage.from(AVATARS_BUCKET).getPublicUrl(path);
+	const publicUrl = `${pub.data.publicUrl}?v=${Date.now()}`;
+
+	const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: publicUrl });
+	if (error) throw error;
+
+	// L'estensione può cambiare tra un upload e l'altro (webp<->jpg): rimuovi
+	// solo il file dell'altra estensione, best-effort, dopo il successo.
+	try {
+		await supabaseClient.storage.from(AVATARS_BUCKET).remove([otherPath]);
+	} catch (e) { /* best-effort: può non esistere */ }
+
+	currentUserProfile = { ...(currentUserProfile || {}), avatar_url: publicUrl };
+	renderAvatarSettings();
+	refreshMountedAvatars();
+}
+
 // ========== FOTO SESSIONE ==========
 let selectedPhotoFile = null;
 
@@ -2239,9 +2744,7 @@ function renderFeed() {
 function feedCardHtml(it, index) {
 	const mine = it.user_id === currentUser.id;
 	const name = mine ? t('feed.you') : escapeHtml(it.username || '?');
-	const avatar = it.avatar_url
-		? `<img class="feed-avatar" src="${escapeHtml(it.avatar_url)}" alt="" loading="lazy">`
-		: `<span class="feed-avatar feed-avatar-fallback">${escapeHtml((it.username || '?').slice(0, 1).toUpperCase())}</span>`;
+	const avatar = avatarMarkup(it.avatar_url, it.username, 30);
 	const when = formatNotifTime(Number(it.ts));
 	const counts = reactionCountsHtml(it.reaction_summary);
 	const img = it.signedUrl
@@ -2507,10 +3010,13 @@ function renderComments(index) {
 	if (!box) return;
 	const list = (it.comments || []).map(c => `
 		<div class="feed-comment" data-comment-id="${c.id}">
-			<span class="feed-comment-name">${c.is_mine ? t('feed.you') : escapeHtml(c.username || '?')}</span>
-			<span class="feed-comment-body">${escapeHtml(c.body)}</span>
-			<span class="feed-comment-when">${formatNotifTime(c.created_at)}</span>
-			${c.is_mine ? `<button type="button" class="feed-comment-del" data-action="delete-comment" data-index="${index}" data-comment-id="${c.id}" aria-label="${t('feed.deleteCommentConfirm')}">🗑</button>` : ''}
+			${avatarMarkup(c.avatar_url, c.username, 22)}
+			<div class="feed-comment-main">
+				<span class="feed-comment-name">${c.is_mine ? t('feed.you') : escapeHtml(c.username || '?')}</span>
+				<span class="feed-comment-body">${escapeHtml(c.body)}</span>
+				<span class="feed-comment-when">${formatNotifTime(c.created_at)}</span>
+				${c.is_mine ? `<button type="button" class="feed-comment-del" data-action="delete-comment" data-index="${index}" data-comment-id="${c.id}" aria-label="${t('feed.deleteCommentConfirm')}">🗑</button>` : ''}
+			</div>
 		</div>`).join('');
 	box.innerHTML = `
 		<div class="feed-comment-list">${list}</div>
@@ -3336,13 +3842,16 @@ if (ctxPie) {
 					? `<br><small style="color: var(--primary-light); font-weight:600;">${t('social.togetherBadge', { count: shared.sessions_together })}</small>`
 					: '';
 
+				const av = avatarMarkup(u.avatar_url, u.username, 30);
+
 				return `
-					<div class="lb-item" onclick="viewFriendStats('${u.user_id}', '${u.username}')"
+					<div class="lb-item" onclick="viewFriendStats('${u.user_id}')"
 						 style="${isMe ? 'background: rgba(76, 175, 80, 0.1);' : ''}">
-						<div style="display: flex; align-items: center;">
+						<div style="display: flex; align-items: center; gap: 8px;">
 							<span class="lb-rank ${rankClass}">${rankStr}</span>
+							${av}
 							<span style="font-weight: ${isMe ? 'bold' : '500'};">
-								${u.username} ${isMe ? t('social.youSuffix') : ''}
+								${escapeHtml(u.username)} ${isMe ? t('social.youSuffix') : ''}
 								${sharedBadge}
 							</span>
 						</div>
@@ -3386,10 +3895,11 @@ if (ctxPie) {
 				const rankClass = i < 3 ? 'top3' : '';
 
 				return `
-					<div class="lb-item" onclick="viewFriendStats('${u.friend_id}', '${u.username}')">
-						<div style="display: flex; align-items: center;">
+					<div class="lb-item" onclick="viewFriendStats('${u.friend_id}')">
+						<div style="display: flex; align-items: center; gap: 8px;">
 							<span class="lb-rank ${rankClass}">${rankStr}</span>
-							<span style="font-weight: 500;">🤝 ${u.username}</span>
+							${avatarMarkup(u.avatar_url, u.username, 30)}
+							<span style="font-weight: 500;">🤝 ${escapeHtml(u.username)}</span>
 						</div>
 						<div style="text-align: right;">
 							<span style="font-weight: bold; color: var(--primary);">${u.sessions_together}</span><br>
@@ -3462,14 +3972,17 @@ if (ctxPie) {
 
 	let currentModalFriendId = null;
 
-	async function viewFriendStats(targetId, username) {
+	async function viewFriendStats(targetId) {
 		const { data, error } = await supabaseClient.rpc('get_friend_stats', { target_user_id: targetId });
 
 		if (error || !data || data.length === 0) return alert(t('social.unableToLoadStats'));
 
-		document.getElementById('modalFriendName').innerText = t('social.statsOf', { username });
 		document.getElementById('modaleFumo').innerText = data[0].fumo_g.toFixed(1);
 		document.getElementById('modaleErba').innerText = data[0].erba_g.toFixed(1);
+		const uname = (data[0].username) || '';
+		document.getElementById('modalFriendName').innerText = uname ? t('social.statsOf', { username: uname }) : t('social.stats');
+		const avEl = document.getElementById('modalFriendAvatar');
+		if (avEl) avEl.innerHTML = avatarMarkup(data[0].avatar_url, uname, 40);
 
 		const { data: shared } = await supabaseClient.rpc('get_shared_stats', { target_user_id: targetId });
 		const sharedEl = document.getElementById('modaleShared');
@@ -3527,14 +4040,18 @@ if (ctxPie) {
 
 		const { data, error } = await supabaseClient
 			.from('profiles')
-			.select('username')
+			.select('username, avatar_url')
 			.eq('id', currentUser.id)
 			.single();
 
-		if (data && data.username) {
-			document.getElementById('currentUsernameDisplay').innerText = data.username;
-			document.getElementById('usernameInput').value = data.username;
+		if (!error && data) {
+			currentUserProfile = { username: data.username || null, avatar_url: data.avatar_url || null };
+			if (data.username) {
+				document.getElementById('currentUsernameDisplay').innerText = data.username;
+				document.getElementById('usernameInput').value = data.username;
+			}
 		}
+		renderAvatarSettings();
 	}
 
 
