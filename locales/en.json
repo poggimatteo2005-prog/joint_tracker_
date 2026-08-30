@@ -644,6 +644,22 @@
     "activatedOn": "Activated on {date}",
     "confirmRevokeDevice": "Turn off push notifications for this device?",
     "deviceRemoved": "🗑️ Device removed",
-    "logout": "🚪 Logout"
+    "logout": "🚪 Logout",
+    "avatarTitle": "Profile picture",
+    "avatarUploadMode": "Upload photo",
+    "avatarPresetMode": "Pick an icon",
+    "avatarChooseImage": "Choose image",
+    "avatarRemove": "Remove",
+    "avatarGuestHint": "Create an account to upload a photo. For now you can pick an icon.",
+    "avatarCropTitle": "Crop your avatar",
+    "avatarCropZoom": "Zoom",
+    "avatarCropConfirm": "Confirm",
+    "avatarCropCancel": "Cancel",
+    "avatarUpdated": "Profile picture updated",
+    "avatarRemoved": "Profile picture removed",
+    "avatarUploadError": "Upload failed, please try again.",
+    "avatarUploading": "Uploading…",
+    "avatarFormatError": "Unsupported format. Use JPG, PNG or WebP.",
+    "avatarTooLarge": "Image too large (10 MB max)."
   }
 }

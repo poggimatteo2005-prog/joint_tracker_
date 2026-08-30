@@ -644,6 +644,22 @@
     "activatedOn": "Attivato il {date}",
     "confirmRevokeDevice": "Disattivare le notifiche push per questo dispositivo?",
     "deviceRemoved": "🗑️ Dispositivo rimosso",
-    "logout": "🚪 Logout"
+    "logout": "🚪 Logout",
+    "avatarTitle": "Immagine del profilo",
+    "avatarUploadMode": "Carica foto",
+    "avatarPresetMode": "Scegli icona",
+    "avatarChooseImage": "Scegli immagine",
+    "avatarRemove": "Rimuovi",
+    "avatarGuestHint": "Crea un account per caricare una tua foto. Per ora puoi scegliere un'icona.",
+    "avatarCropTitle": "Ritaglia l'avatar",
+    "avatarCropZoom": "Zoom",
+    "avatarCropConfirm": "Conferma",
+    "avatarCropCancel": "Annulla",
+    "avatarUpdated": "Immagine del profilo aggiornata",
+    "avatarRemoved": "Immagine del profilo rimossa",
+    "avatarUploadError": "Caricamento non riuscito, riprova.",
+    "avatarUploading": "Caricamento…",
+    "avatarFormatError": "Formato non supportato. Usa JPG, PNG o WebP.",
+    "avatarTooLarge": "Immagine troppo grande (massimo 10 MB)."
   }
 }
