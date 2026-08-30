@@ -52,6 +52,7 @@ PWA per il tracking di sessioni cannabis con funzionalità social (sessioni cond
 - Logica guest mode / migrazione da guest ad account registrato
 - Sistema achievements (se cambia la logica, gli achievement già sbloccati non devono sparire)
 - **Istantanee/feed**: un'istantanea è una riga `smokes` con `photo_path` non null. Reazioni in `snapshot_reactions` (una per utente/istantanea, 5 tipi fissi), commenti in `snapshot_comments` (thread piatto, 1–500 char), entrambe legate a `smokes.id`. "Cancellare un'istantanea" = `photo_path → null`: il trigger `trg_smokes_snapshot_cleanup_upd` su `smokes` fa il cascade di reazioni/commenti/notifiche. Il feed usa `get_snapshot_feed` (non più `get_friends_snapshots`, ancora in vita finché non rimosso). Spec/plan in `docs/superpowers/`.
+- **Bucket Storage `avatars`** (pubblico in lettura, primo bucket pubblico del progetto): path `{user_id}/avatar.{webp|jpg}`, scrittura RLS solo sul proprio prefisso (`(storage.foldername(name))[1] = auth.uid()::text`), backstop bucket 2 MB + mime `image/{webp,jpeg,png}`. `profiles.avatar_url` contiene o la URL pubblica del file (`…/avatars/{uid}/avatar.ext?v={epoch}`), o un sentinel `preset:<key>` (8 preset fissi), o `null`. **Invariante**: solo l'helper `avatarMarkup()` in `app.js` interpreta `avatar_url` — nessun altro punto fa `<img src=${…avatar_url}>`. Se aggiungi una superficie che mostra un utente, chiama `avatarMarkup()`. Migration `20260830120000_add_avatars_bucket.sql`, applicata a prod via MCP. Spec/plan in `docs/superpowers/`.
 
 ## Comandi utili
 ```
