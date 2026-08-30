@@ -1503,7 +1503,13 @@ async function addPlaceFromMap() {
 			});
 		}
 
-		if (p === 'social' && !isGuestMode) { loadSocial(); loadFeed(); loadFriendRequests(); }
+		if (p === 'social' && !isGuestMode) {
+			loadSocial();
+			loadFriendRequests();
+			const feedOpen = !feedCollapsedPref();
+			toggleSnapshotFeed(feedOpen);
+			if (feedOpen) loadFeed(); // lazy: se la sezione è chiusa il feed si carica solo all'apertura
+		}
 		if (p === 'stock' || p === 'charts') loadPurchases();
 		if (p === 'charts') loadChartJs().then(renderCharts);
 		if (p === 'settings') {
@@ -2147,6 +2153,27 @@ async function openPhotoViewer(ts) {
 let feedItems = [];
 let feedHasFriends = null; // null = sconosciuto, bool dopo il primo load
 
+// Sezione istantanee a tendina. Stato persistito in localStorage 'jt_feed_collapsed'
+// ('1' = chiusa). Default aperta. Il feed è lazy: non si carica finché la sezione
+// non è aperta (evita il round-trip di get_snapshot_feed + signed URL se guardi
+// solo la classifica).
+function feedCollapsedPref() {
+	try { return localStorage.getItem('jt_feed_collapsed') === '1'; } catch (e) { return false; }
+}
+
+function toggleSnapshotFeed(forceOpen) {
+	const panel = document.getElementById('snapshotFeedPanel');
+	const btn = document.getElementById('snapshotFeedToggle');
+	if (!panel || !btn) return;
+	const open = typeof forceOpen === 'boolean' ? forceOpen : !panel.classList.contains('open');
+	panel.classList.toggle('open', open);
+	btn.classList.toggle('is-open', open);
+	btn.setAttribute('aria-expanded', String(open));
+	try { localStorage.setItem('jt_feed_collapsed', open ? '0' : '1'); } catch (e) {}
+	// apertura manuale (utente) → carica il feed se non è già stato caricato in questa visita
+	if (open && typeof forceOpen !== 'boolean' && !isGuestMode && currentUser) loadFeed();
+}
+
 async function loadFeed() {
 	const el = document.getElementById('snapshotFeed');
 	if (!el) return;
@@ -2605,7 +2632,9 @@ async function deletePhotoFromViewer() {
 	showMessage(t('gallery.photoRemoved'));
 	await loadData();
 	await loadGallery();
-	if (typeof loadFeed === 'function') await loadFeed();
+	// aggiorna il feed solo se la sezione è aperta (altrimenti si ricarica alla prossima apertura)
+	const feedPanel = document.getElementById('snapshotFeedPanel');
+	if (typeof loadFeed === 'function' && feedPanel && feedPanel.classList.contains('open')) await loadFeed();
 }
 
 // ========== MODIFICA POSIZIONE A POSTERIORI ==========
@@ -5407,6 +5436,9 @@ function toggleMenu() {
 
 // Chiudi il menu quando clicchi su un bottone
 document.addEventListener('DOMContentLoaded', function() {
+	const feedToggle = document.getElementById('snapshotFeedToggle');
+	if (feedToggle) feedToggle.addEventListener('click', () => toggleSnapshotFeed());
+
 	const menuButtons = document.querySelectorAll('#menu button');
 	menuButtons.forEach(btn => {
 		btn.addEventListener('click', function() {

@@ -587,9 +587,18 @@
 	</div>
 
 	<div class="card">
-		<h3 data-i18n="social.snapshots">📸 Istantanee</h3>
-		<p style="font-size:12px; color:var(--color-text-muted); margin-top:-8px;" data-i18n="social.snapshotsNote">Le foto più recenti tue e degli amici che hai aggiunto.</p>
-		<div id="snapshotFeed" class="snapshot-feed"></div>
+		<div class="history-header-row">
+			<h3 style="margin:0;" data-i18n="social.snapshots">📸 Istantanee</h3>
+			<button type="button" class="filter-toggle-btn is-open" id="snapshotFeedToggle" aria-expanded="true" aria-controls="snapshotFeedPanel" data-i18n-aria-label="feed.toggleAria">
+				<span class="chevron">▾</span>
+			</button>
+		</div>
+		<div class="filter-accordion open" id="snapshotFeedPanel">
+			<div class="filter-accordion-inner">
+				<p style="font-size:12px; color:var(--color-text-muted); margin-top:8px; margin-bottom:0;" data-i18n="social.snapshotsNote">Le foto più recenti tue e degli amici che hai aggiunto.</p>
+				<div id="snapshotFeed" class="snapshot-feed" style="margin-top:12px;"></div>
+			</div>
+		</div>
 	</div>
 
 	<div class="card">

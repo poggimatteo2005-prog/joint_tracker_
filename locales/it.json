@@ -197,6 +197,7 @@
     "send": "Invia",
     "deleteCommentConfirm": "Eliminare questo commento?",
     "you": "Tu",
+    "toggleAria": "Mostra o nascondi le istantanee",
     "reactionName": { "heart": "Cuore", "fire": "Fuoco", "joy": "Risata", "wow": "Sorpresa", "clap": "Applauso" }
   },
   "notif": {

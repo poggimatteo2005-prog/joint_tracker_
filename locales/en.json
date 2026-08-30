@@ -197,6 +197,7 @@
     "send": "Send",
     "deleteCommentConfirm": "Delete this comment?",
     "you": "You",
+    "toggleAria": "Show or hide snapshots",
     "reactionName": { "heart": "Heart", "fire": "Fire", "joy": "Laugh", "wow": "Wow", "clap": "Clap" }
   },
   "notif": {
