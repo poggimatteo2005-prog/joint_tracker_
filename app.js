@@ -14,6 +14,10 @@
 	let charts = {};
 	let userPlaces = []; // Array per i posti caricati dal DB
 	let sessionParticipants = []; // { user_id, username, avatar_url }
+	// Cache dell'ultima lista amici resa dalla quick-list: quickAddParticipant()
+	// la consulta per id invece di ricevere username/avatar_url in un onclick inline
+	// (pattern user-string-in-onclick evitato — vedi Task 8).
+	let friendsQuickCache = [];
 	let isLocatingNow = false;
 	let isOnline = navigator.onLine;
 	let notifications = [];
@@ -24,10 +28,10 @@
 	const VAPID_PUBLIC_KEY = 'BE2yG7kWhMrni1qk-uilMqHc7uGL92CZE6UaLt-sbTTHsDr4lDP6qiqnSJsxachx5kUJ7C-0dO46UeSjxOUwiG0';
 	let userReminderSettings = { reminder_enabled: true, reminder_time: '20:00:00' };
 	let unlockedAchievements = [];
-let currentUserProfile = null; // { username, avatar_url } — popolato da loadUserProfile()
-let friendsCountCache = 0;
-let achievementsLoaded = false;
-let isGuestMode = false;
+	let currentUserProfile = null; // { username, avatar_url } — popolato da loadUserProfile()
+	let friendsCountCache = 0;
+	let achievementsLoaded = false;
+	let isGuestMode = false;
 
 // ========== TEMA (chiaro/scuro/automatico) ==========
 function getStoredThemePref() {
@@ -218,11 +222,6 @@ async function getMyFriendsList() {
 
     return profilesData || [];
 }
-
-// Cache dell'ultima lista amici resa dalla quick-list: quickAddParticipant()
-// la consulta per id invece di ricevere username/avatar_url in un onclick inline
-// (pattern user-string-in-onclick evitato — vedi Task 8).
-let friendsQuickCache = [];
 
 async function renderFriendsQuickList() {
     const el = document.getElementById('friendsQuickList');
@@ -2108,7 +2107,12 @@ function currentAvatarValue() {
 }
 
 let avatarMode = 'upload'; // 'upload' | 'preset'
+// True appena l'utente tocca una tab avatar in Impostazioni: blocca l'auto-switch
+// a "Scegli icona" di renderAvatarSettings (vedi lì). I due bottoni tab sono gli
+// unici chiamanti di setAvatarMode, quindi ogni chiamata è una scelta manuale.
+let avatarModeUserPicked = false;
 function setAvatarMode(mode) {
+	avatarModeUserPicked = true;
 	avatarMode = mode;
 	document.getElementById('avatarModeUpload').classList.toggle('active', mode === 'upload');
 	document.getElementById('avatarModePreset').classList.toggle('active', mode === 'preset');
@@ -2130,6 +2134,13 @@ function renderAvatarSettings() {
 	const preview = document.getElementById('avatarPreview');
 	if (!preview) return;
 	const val = currentAvatarValue();
+
+	// Se l'avatar corrente è un preset, mostra il pannello "Scegli icona" così il
+	// preset attivo è visibile — ma solo finché l'utente non ha scelto una tab a mano.
+	if (!avatarModeUserPicked && typeof val === 'string' && val.startsWith('preset:') && avatarMode !== 'preset') {
+		setAvatarMode('preset');
+	}
+
 	const name = (currentUserProfile && currentUserProfile.username) || (currentUser && currentUser.email) || '?';
 	preview.innerHTML = avatarMarkup(val, name, 72);
 
@@ -2246,6 +2257,9 @@ function handleAvatarFileSelected(event) {
 }
 
 function openAvatarCrop(img, objectUrl) {
+	// Un file precedente selezionato senza chiudere il modal lascerebbe orfano il suo objectUrl.
+	if (avatarCrop && avatarCrop.objectUrl) URL.revokeObjectURL(avatarCrop.objectUrl);
+
 	const viewport = document.getElementById('avatarCropViewport');
 	const imgEl = document.getElementById('avatarCropImg');
 
@@ -2329,6 +2343,7 @@ function initAvatarCropInteractions() {
 	viewport.addEventListener('pointerdown', e => {
 		if (!avatarCrop) return;
 		viewport.setPointerCapture(e.pointerId);
+		viewport.classList.add('is-grabbing');
 		avatarCrop.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 		if (avatarCrop.pointers.size === 2) {
 			const pts = [...avatarCrop.pointers.values()];
@@ -2364,6 +2379,7 @@ function initAvatarCropInteractions() {
 		if (!avatarCrop) return;
 		avatarCrop.pointers.delete(e.pointerId);
 		if (avatarCrop.pointers.size < 2) avatarCrop.pinchStartDist = 0;
+		if (avatarCrop.pointers.size === 0) viewport.classList.remove('is-grabbing');
 	};
 	viewport.addEventListener('pointerup', endPointer);
 	viewport.addEventListener('pointercancel', endPointer);

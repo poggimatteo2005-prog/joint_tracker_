@@ -998,7 +998,6 @@ input[type="date"] {
 }
 .avatar-preset { background: rgba(76, 175, 80, 0.15); }
 :root[data-theme="dark"] .avatar-preset { background: rgba(76, 175, 80, 0.22); }
-.avatar-fallback { /* background impostato inline da hslFromHash */ }
 
 .avatar-settings { margin: 4px 0 16px; }
 .avatar-settings-row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
@@ -1025,6 +1024,7 @@ button.avatar-remove-btn { margin-top: 0; width: auto; padding: 6px 14px; font-s
 	margin: 8px auto 12px; overflow: hidden; border-radius: 50%;
 	background: rgba(var(--overlay-rgb), 0.08); touch-action: none; cursor: grab;
 }
+.avatar-crop-viewport.is-grabbing { cursor: grabbing; }
 .avatar-crop-img {
 	position: absolute; top: 0; left: 0; transform-origin: 0 0;
 	will-change: transform; user-select: none; -webkit-user-drag: none; max-width: none;
