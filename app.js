@@ -2165,6 +2165,229 @@ function refreshMountedAvatars() {
 	}
 }
 
+// --- crop interattivo (pan + zoom), vanilla ---
+const AVATAR_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const AVATAR_MAX_BYTES = 10 * 1024 * 1024;
+const AVATAR_OUT_SIZE = 256;
+
+let avatarCrop = null;
+
+function handleAvatarFileSelected(event) {
+	const input = event.target;
+	const file = input.files && input.files[0];
+	if (!file) return;
+	clearAvatarError();
+
+	if (!AVATAR_ACCEPTED_TYPES.includes(file.type)) {
+		showAvatarError(t('settings.avatarFormatError'));
+		input.value = '';
+		return;
+	}
+	if (file.size > AVATAR_MAX_BYTES) {
+		showAvatarError(t('settings.avatarTooLarge'));
+		input.value = '';
+		return;
+	}
+
+	const url = URL.createObjectURL(file);
+	const img = new Image();
+	img.onload = () => { openAvatarCrop(img, url); };
+	img.onerror = () => {
+		URL.revokeObjectURL(url);
+		showAvatarError(t('settings.avatarFormatError'));
+		input.value = '';
+	};
+	img.src = url;
+}
+
+function openAvatarCrop(img, objectUrl) {
+	const viewport = document.getElementById('avatarCropViewport');
+	const imgEl = document.getElementById('avatarCropImg');
+
+	// Mostrare il modal PRIMA di misurare: da display:none il viewport ha
+	// clientWidth 0 -> minScale 0 -> transform NaN.
+	document.getElementById('avatarCropError').style.display = 'none';
+	document.getElementById('avatarCropConfirmBtn').disabled = false;
+	document.getElementById('avatarCropModal').style.display = 'flex';
+
+	const V = viewport.clientWidth; // viewport quadrato: clientWidth === clientHeight (CSS)
+
+	const natW = img.naturalWidth;
+	const natH = img.naturalHeight;
+	const minScale = V / Math.min(natW, natH);
+
+	imgEl.src = objectUrl;
+	imgEl.style.width = natW + 'px';
+	imgEl.style.height = natH + 'px';
+
+	avatarCrop = {
+		objectUrl, natW, natH, V,
+		minScale, scale: minScale,
+		tx: (V - natW * minScale) / 2,
+		ty: (V - natH * minScale) / 2,
+		pointers: new Map(),
+		pinchStartDist: 0, pinchStartScale: 0,
+	};
+	clampAvatarCrop();
+	applyAvatarCropTransform();
+
+	const zoom = document.getElementById('avatarCropZoom');
+	zoom.min = '1'; zoom.max = '4'; zoom.value = '1';
+}
+
+function closeAvatarCrop() {
+	if (avatarCrop && avatarCrop.objectUrl) URL.revokeObjectURL(avatarCrop.objectUrl);
+	avatarCrop = null;
+	document.getElementById('avatarCropModal').style.display = 'none';
+	const input = document.getElementById('avatarFileInput');
+	if (input) input.value = '';
+}
+
+// Vincola scale >= minScale e tx/ty in modo che l'immagine copra sempre il viewport.
+function clampAvatarCrop() {
+	const c = avatarCrop;
+	if (c.scale < c.minScale) c.scale = c.minScale;
+	const dispW = c.natW * c.scale;
+	const dispH = c.natH * c.scale;
+	c.tx = Math.min(0, Math.max(c.V - dispW, c.tx));
+	c.ty = Math.min(0, Math.max(c.V - dispH, c.ty));
+}
+
+function applyAvatarCropTransform() {
+	const c = avatarCrop;
+	const imgEl = document.getElementById('avatarCropImg');
+	imgEl.style.transform = `translate(${c.tx}px, ${c.ty}px) scale(${c.scale})`;
+	// sync slider (scale relativo a minScale, range 1..4)
+	const zoom = document.getElementById('avatarCropZoom');
+	const rel = c.scale / c.minScale;
+	if (Math.abs(parseFloat(zoom.value) - rel) > 0.01) zoom.value = String(Math.min(4, Math.max(1, rel)));
+}
+
+// Zoom mantenendo ancorato il punto immagine sotto (px, py) in coord viewport.
+function zoomAvatarCropAround(newScale, px, py) {
+	const c = avatarCrop;
+	newScale = Math.min(c.minScale * 4, Math.max(c.minScale, newScale));
+	const ix = (px - c.tx) / c.scale;
+	const iy = (py - c.ty) / c.scale;
+	c.scale = newScale;
+	c.tx = px - ix * newScale;
+	c.ty = py - iy * newScale;
+	clampAvatarCrop();
+	applyAvatarCropTransform();
+}
+
+function initAvatarCropInteractions() {
+	const viewport = document.getElementById('avatarCropViewport');
+	if (!viewport || viewport.dataset.wired) return;
+	viewport.dataset.wired = '1';
+
+	viewport.addEventListener('pointerdown', e => {
+		if (!avatarCrop) return;
+		viewport.setPointerCapture(e.pointerId);
+		avatarCrop.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		if (avatarCrop.pointers.size === 2) {
+			const pts = [...avatarCrop.pointers.values()];
+			avatarCrop.pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+			avatarCrop.pinchStartScale = avatarCrop.scale;
+		}
+	});
+
+	viewport.addEventListener('pointermove', e => {
+		if (!avatarCrop || !avatarCrop.pointers.has(e.pointerId)) return;
+		const prev = avatarCrop.pointers.get(e.pointerId);
+		const cur = { x: e.clientX, y: e.clientY };
+		avatarCrop.pointers.set(e.pointerId, cur);
+
+		if (avatarCrop.pointers.size === 1) {
+			avatarCrop.tx += cur.x - prev.x;
+			avatarCrop.ty += cur.y - prev.y;
+			clampAvatarCrop();
+			applyAvatarCropTransform();
+		} else if (avatarCrop.pointers.size === 2) {
+			const pts = [...avatarCrop.pointers.values()];
+			const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+			if (avatarCrop.pinchStartDist > 0) {
+				const rect = document.getElementById('avatarCropViewport').getBoundingClientRect();
+				const midX = (pts[0].x + pts[1].x) / 2 - rect.left;
+				const midY = (pts[0].y + pts[1].y) / 2 - rect.top;
+				zoomAvatarCropAround(avatarCrop.pinchStartScale * (dist / avatarCrop.pinchStartDist), midX, midY);
+			}
+		}
+	});
+
+	const endPointer = e => {
+		if (!avatarCrop) return;
+		avatarCrop.pointers.delete(e.pointerId);
+		if (avatarCrop.pointers.size < 2) avatarCrop.pinchStartDist = 0;
+	};
+	viewport.addEventListener('pointerup', endPointer);
+	viewport.addEventListener('pointercancel', endPointer);
+
+	document.getElementById('avatarCropZoom').addEventListener('input', e => {
+		if (!avatarCrop) return;
+		const rel = parseFloat(e.target.value) || 1;
+		const c = avatarCrop;
+		zoomAvatarCropAround(c.minScale * rel, c.V / 2, c.V / 2);
+	});
+}
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', initAvatarCropInteractions);
+} else {
+	initAvatarCropInteractions();
+}
+
+async function exportCroppedAvatar() {
+	const c = avatarCrop;
+	const img = document.getElementById('avatarCropImg');
+	// regione visibile in coordinate immagine-naturali
+	const sSize = c.V / c.scale;
+	const sx = -c.tx / c.scale;
+	const sy = -c.ty / c.scale;
+
+	const canvas = document.createElement('canvas');
+	canvas.width = AVATAR_OUT_SIZE;
+	canvas.height = AVATAR_OUT_SIZE;
+	const ctx = canvas.getContext('2d');
+	ctx.imageSmoothingQuality = 'high';
+	ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, AVATAR_OUT_SIZE, AVATAR_OUT_SIZE);
+
+	const toBlob = (type, q) => new Promise(res => canvas.toBlob(res, type, q));
+	let blob = await toBlob('image/webp', 0.85);
+	let ext = 'webp';
+	if (!blob) { blob = await toBlob('image/jpeg', 0.85); ext = 'jpg'; }
+	if (!blob) throw new Error('toBlob returned null');
+	return { blob, ext };
+}
+
+async function confirmAvatarCrop() {
+	const btn = document.getElementById('avatarCropConfirmBtn');
+	const errEl = document.getElementById('avatarCropError');
+	errEl.style.display = 'none';
+	btn.disabled = true;
+	const previous = currentAvatarValue();
+	setAvatarPreviewLoading(true);
+	try {
+		const out = await exportCroppedAvatar();
+		await uploadAvatarBlob(out); // Task 6
+		closeAvatarCrop();
+		showMessage(t('settings.avatarUpdated'));
+	} catch (e) {
+		console.error('confirmAvatarCrop:', e);
+		errEl.textContent = t('settings.avatarUploadError');
+		errEl.style.display = 'block';
+		btn.disabled = false;
+	} finally {
+		setAvatarPreviewLoading(false);
+		renderAvatarSettings(); // ripristina preview (previous invariato in caso d'errore)
+		void previous;
+	}
+}
+
+function setAvatarPreviewLoading(on) {
+	const preview = document.getElementById('avatarPreview');
+	if (preview) preview.classList.toggle('avatar-loading', !!on);
+}
+
 // ========== FOTO SESSIONE ==========
 let selectedPhotoFile = null;
 

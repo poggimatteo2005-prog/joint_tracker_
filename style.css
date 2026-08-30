@@ -1004,6 +1004,21 @@ input[type="date"] {
 .avatar-preset-cell.is-selected { border-color: var(--primary); background: rgba(76, 175, 80, 0.16); }
 .avatar-error { color: var(--danger); font-size: 13px; margin: 8px 0 0; }
 
+.avatar-loading { opacity: 0.45; position: relative; }
+.avatar-crop-viewport {
+	position: relative; width: min(280px, 78vw); height: min(280px, 78vw);
+	margin: 8px auto 12px; overflow: hidden; border-radius: 50%;
+	background: rgba(var(--overlay-rgb), 0.08); touch-action: none; cursor: grab;
+}
+.avatar-crop-img {
+	position: absolute; top: 0; left: 0; transform-origin: 0 0;
+	will-change: transform; user-select: none; -webkit-user-drag: none; max-width: none;
+}
+.avatar-crop-zoom-label { display: block; font-size: 12px; color: var(--color-text-muted); margin-bottom: 4px; }
+.avatar-crop-zoom { width: 100%; margin-bottom: 12px; }
+.avatar-crop-actions { display: flex; gap: 10px; }
+.avatar-crop-actions button { flex: 1; margin-top: 0; }
+
 /* ========== FEED ISTANTANEE ========== */
 .snapshot-feed { display: flex; flex-direction: column; gap: 18px; }
 .feed-card { border: 1px solid rgba(var(--overlay-rgb), 0.10); border-radius: 14px; overflow: hidden; background: rgba(var(--overlay-rgb), 0.03); }
