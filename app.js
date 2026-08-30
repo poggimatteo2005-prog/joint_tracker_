@@ -2983,10 +2983,13 @@ function renderComments(index) {
 	if (!box) return;
 	const list = (it.comments || []).map(c => `
 		<div class="feed-comment" data-comment-id="${c.id}">
-			<span class="feed-comment-name">${c.is_mine ? t('feed.you') : escapeHtml(c.username || '?')}</span>
-			<span class="feed-comment-body">${escapeHtml(c.body)}</span>
-			<span class="feed-comment-when">${formatNotifTime(c.created_at)}</span>
-			${c.is_mine ? `<button type="button" class="feed-comment-del" data-action="delete-comment" data-index="${index}" data-comment-id="${c.id}" aria-label="${t('feed.deleteCommentConfirm')}">🗑</button>` : ''}
+			${avatarMarkup(c.avatar_url, c.username, 22)}
+			<div class="feed-comment-main">
+				<span class="feed-comment-name">${c.is_mine ? t('feed.you') : escapeHtml(c.username || '?')}</span>
+				<span class="feed-comment-body">${escapeHtml(c.body)}</span>
+				<span class="feed-comment-when">${formatNotifTime(c.created_at)}</span>
+				${c.is_mine ? `<button type="button" class="feed-comment-del" data-action="delete-comment" data-index="${index}" data-comment-id="${c.id}" aria-label="${t('feed.deleteCommentConfirm')}">🗑</button>` : ''}
+			</div>
 		</div>`).join('');
 	box.innerHTML = `
 		<div class="feed-comment-list">${list}</div>

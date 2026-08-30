@@ -1062,7 +1062,8 @@ input[type="date"] {
 .feed-palette-btn:hover, .feed-palette-btn:focus { background: rgba(var(--overlay-rgb), 0.12); }
 .feed-comments { padding: 0 12px 12px; border-top: 1px solid rgba(var(--overlay-rgb), 0.08); }
 .feed-comment-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
-.feed-comment { font-size: 13px; line-height: 1.4; color: var(--color-text); }
+.feed-comment { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; color: var(--color-text); }
+.feed-comment-main { flex: 1; min-width: 0; }
 .feed-comment-name { font-weight: 600; margin-right: 6px; }
 .feed-comment-body { overflow-wrap: anywhere; }
 .feed-comment-when { color: var(--color-text-muted); font-size: 11px; margin-left: 6px; }
