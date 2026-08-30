@@ -652,7 +652,12 @@ if (mode === 'signup') {
 		loadAchievements(),
 		loadBreaks(),
 		loadGoal(),
-		checkOnboarding()
+		checkOnboarding(),
+		// popola currentUserProfile (username + avatar_url) subito: la propria
+		// riga in leaderboard/contributori usa currentUserProfile?.avatar_url,
+		// altrimenti mancava finché non si apriva Impostazioni (unico altro
+		// chiamante). Scrive anche il DOM Impostazioni (sempre presente, nascosto).
+		loadUserProfile()
 	]);
 	}
 
@@ -2087,6 +2092,10 @@ async function migrateGuestAvatar(userId) {
 	try {
 		const { error } = await supabaseClient.from('profiles').upsert({ id: userId, avatar_url: val });
 		if (error) throw error;
+		// logout -> preset da guest -> login: un file avatar caricato in una
+		// sessione precedente resterebbe orfano ora che avatar_url è un preset.
+		// currentUser è impostato qui, quindi il guard di removeUploadedAvatarFiles passa.
+		await removeUploadedAvatarFiles();
 		clearGuestAvatar();
 		if (currentUserProfile) currentUserProfile.avatar_url = val;
 	} catch (e) {
@@ -2153,9 +2162,10 @@ async function selectPresetAvatar(key) {
 	}
 
 	try {
-		await removeUploadedAvatarFiles(); // best-effort: se c'era una foto, non lasciarla orfana
+		// upsert PRIMA: se fallisce, il file avatar esistente resta intatto (spec §10).
 		const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: value });
 		if (error) throw error;
+		await removeUploadedAvatarFiles(); // solo dopo il successo: non lasciare orfana la vecchia foto
 		currentUserProfile = { ...(currentUserProfile || {}), avatar_url: value };
 		renderAvatarSettings();
 		refreshMountedAvatars();
@@ -2174,9 +2184,10 @@ async function removeAvatar() {
 		return;
 	}
 	try {
-		await removeUploadedAvatarFiles();
+		// upsert PRIMA: se fallisce, il file avatar esistente resta intatto (spec §10).
 		const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: null });
 		if (error) throw error;
+		await removeUploadedAvatarFiles(); // solo dopo il successo
 		currentUserProfile = { ...(currentUserProfile || {}), avatar_url: null };
 		renderAvatarSettings();
 		refreshMountedAvatars();
@@ -2436,11 +2447,13 @@ async function removeUploadedAvatarFiles() {
 async function uploadAvatarBlob({ blob, ext }) {
 	if (isGuestMode || !currentUser) throw new Error('upload avatar non disponibile in guest');
 	const path = `${currentUser.id}/avatar.${ext}`;
+	const otherPath = `${currentUser.id}/avatar.${ext === 'webp' ? 'jpg' : 'webp'}`;
 	const contentType = ext === 'webp' ? 'image/webp' : 'image/jpeg';
 
-	// nome file può cambiare estensione tra upload -> togli entrambi prima
-	await removeUploadedAvatarFiles();
-
+	// Ordine: upload -> upsert profiles -> pulizia dell'ALTRA estensione.
+	// Qualsiasi errore prima della pulizia -> throw, niente cancellato: un
+	// avatar funzionante resta intatto (spec §10). upsert:true sovrascrive
+	// il file con lo stesso nome; non si tocca mai il nome appena scritto.
 	const up = await supabaseClient.storage.from(AVATARS_BUCKET)
 		.upload(path, blob, { upsert: true, contentType });
 	if (up.error) throw up.error;
@@ -2450,6 +2463,12 @@ async function uploadAvatarBlob({ blob, ext }) {
 
 	const { error } = await supabaseClient.from('profiles').upsert({ id: currentUser.id, avatar_url: publicUrl });
 	if (error) throw error;
+
+	// L'estensione può cambiare tra un upload e l'altro (webp<->jpg): rimuovi
+	// solo il file dell'altra estensione, best-effort, dopo il successo.
+	try {
+		await supabaseClient.storage.from(AVATARS_BUCKET).remove([otherPath]);
+	} catch (e) { /* best-effort: può non esistere */ }
 
 	currentUserProfile = { ...(currentUserProfile || {}), avatar_url: publicUrl };
 	renderAvatarSettings();
