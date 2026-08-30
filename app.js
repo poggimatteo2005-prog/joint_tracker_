@@ -24,6 +24,7 @@
 	const VAPID_PUBLIC_KEY = 'BE2yG7kWhMrni1qk-uilMqHc7uGL92CZE6UaLt-sbTTHsDr4lDP6qiqnSJsxachx5kUJ7C-0dO46UeSjxOUwiG0';
 	let userReminderSettings = { reminder_enabled: true, reminder_time: '20:00:00' };
 	let unlockedAchievements = [];
+let currentUserProfile = null; // { username, avatar_url } — popolato da loadUserProfile()
 let friendsCountCache = 0;
 let achievementsLoaded = false;
 let isGuestMode = false;
@@ -1986,6 +1987,67 @@ async function checkOnboarding() {
 	}
 }
 
+// ========== AVATAR ==========
+// profiles.avatar_url può essere: una URL http(s) (foto caricata), un sentinel
+// "preset:<key>", oppure null. avatarMarkup() è l'UNICO punto che interpreta il
+// campo — ogni superficie che mostra un utente passa di qui. Vedi
+// docs/superpowers/specs/2026-08-30-avatar-utente-design.md §3.
+
+const PRESET_AVATARS = {
+	leaf: '🍃', herb: '🌿', sprout: '🌱', evergreen: '🌲',
+	sun: '☀️', moon: '🌙', fire: '🔥', sparkle: '✨',
+};
+const PRESET_KEYS = Object.keys(PRESET_AVATARS);
+
+function presetEmoji(key) {
+	return Object.prototype.hasOwnProperty.call(PRESET_AVATARS, key) ? PRESET_AVATARS[key] : null;
+}
+
+// Hash deterministico (djb2) -> tinta stabile per l'iniziale di fallback.
+// S/L fissi scelti per reggere sia tema chiaro che scuro con testo bianco.
+function hslFromHash(str) {
+	let h = 5381;
+	const s = String(str || '?');
+	for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+	return `hsl(${Math.abs(h) % 360} 45% 45%)`;
+}
+
+// Ritorna markup HTML per un avatar. `username` serve solo per l'iniziale e l'alt.
+function avatarMarkup(avatarUrl, username, sizePx = 32) {
+	const name = String(username || '?');
+	const initial = escapeHtml(name.trim().slice(0, 1).toUpperCase() || '?');
+	const px = Math.round(sizePx);
+	const fontPx = Math.round(px * 0.44);
+	const dims = `width:${px}px;height:${px}px;`;
+
+	if (typeof avatarUrl === 'string' && avatarUrl.startsWith('preset:')) {
+		const emoji = presetEmoji(avatarUrl.slice(7));
+		if (emoji) {
+			return `<span class="avatar avatar-preset" style="${dims}font-size:${Math.round(px * 0.55)}px;" aria-hidden="true">${emoji}</span>`;
+		}
+		// key ignota -> degrada a iniziale
+	} else if (typeof avatarUrl === 'string' && /^https?:\/\//i.test(avatarUrl)) {
+		return `<img class="avatar" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name)}" `
+			+ `width="${px}" height="${px}" loading="lazy" `
+			+ `data-initial="${initial}" data-hue="${escapeHtml(hslFromHash(name))}" `
+			+ `onerror="avatarImgFallback(this)">`;
+	}
+
+	return `<span class="avatar avatar-fallback" style="${dims}font-size:${fontPx}px;background:${hslFromHash(name)};">${initial}</span>`;
+}
+
+// Sostituisce un <img> avatar rotto (file 404) con l'iniziale colorata,
+// senza rifare query (initial/hue sono nei data-attr). Stesso pattern di fallbackPlainPhoto.
+function avatarImgFallback(img) {
+	if (img.dataset.fallbackDone) return;
+	img.dataset.fallbackDone = '1';
+	const span = document.createElement('span');
+	span.className = 'avatar avatar-fallback';
+	span.style.cssText = `width:${img.width}px;height:${img.height}px;font-size:${Math.round(img.width * 0.44)}px;background:${img.dataset.hue || 'hsl(140 45% 45%)'};`;
+	span.textContent = img.dataset.initial || '?';
+	img.replaceWith(span);
+}
+
 // ========== FOTO SESSIONE ==========
 let selectedPhotoFile = null;
 
@@ -2239,9 +2301,7 @@ function renderFeed() {
 function feedCardHtml(it, index) {
 	const mine = it.user_id === currentUser.id;
 	const name = mine ? t('feed.you') : escapeHtml(it.username || '?');
-	const avatar = it.avatar_url
-		? `<img class="feed-avatar" src="${escapeHtml(it.avatar_url)}" alt="" loading="lazy">`
-		: `<span class="feed-avatar feed-avatar-fallback">${escapeHtml((it.username || '?').slice(0, 1).toUpperCase())}</span>`;
+	const avatar = avatarMarkup(it.avatar_url, it.username, 30);
 	const when = formatNotifTime(Number(it.ts));
 	const counts = reactionCountsHtml(it.reaction_summary);
 	const img = it.signedUrl

@@ -966,10 +966,31 @@ input[type="date"] {
 	box-shadow: none;
 }
 
+/* ========== AVATAR ========== */
+.avatar {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	object-fit: cover;
+	flex: 0 0 auto;
+	overflow: hidden;
+	color: #fff;
+	font-weight: 700;
+	line-height: 1;
+	vertical-align: middle;
+	user-select: none;
+}
+.avatar-preset { background: rgba(76, 175, 80, 0.15); }
+:root[data-theme="dark"] .avatar-preset { background: rgba(76, 175, 80, 0.22); }
+.avatar-fallback { /* background impostato inline da hslFromHash */ }
+
 /* ========== FEED ISTANTANEE ========== */
 .snapshot-feed { display: flex; flex-direction: column; gap: 18px; }
 .feed-card { border: 1px solid rgba(var(--overlay-rgb), 0.10); border-radius: 14px; overflow: hidden; background: rgba(var(--overlay-rgb), 0.03); }
 .feed-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+/* .feed-avatar* deprecati: feedCardHtml ora usa .avatar (vedi sezione AVATAR).
+   Alias temporaneo per HTML servito da cache pre-deploy. */
 .feed-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
 .feed-avatar-fallback { display: flex; align-items: center; justify-content: center; background: var(--color-primary, #4caf50); color: #fff; font-size: 13px; font-weight: 600; }
 .feed-name { font-weight: 600; font-size: 14px; }
